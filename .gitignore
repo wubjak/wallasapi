@@ -1,0 +1,56 @@
+# === WallasAPI .gitignore ===
+# NUNCA subir claves API, entornos virtuales, ni archivos sensibles
+
+# Variables de entorno y claves API (MUY IMPORTANTE)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Entornos virtuales de Python
+.venv/
+venv/
+ENV/
+env/
+
+# Cache de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Archivos de datos locales (no codigo fuente)
+models_cache.json
+*.db
+*.sqlite3
+
+# Logs y archivos temporales
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+temp_context/
+temp_media/
+
+# IDEs y editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos de distribucion / build
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Docker (si agregas luego)
+docker-compose.override.yml

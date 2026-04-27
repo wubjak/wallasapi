@@ -1,0 +1,29 @@
+# ai_services/requirements.txt
+# Core server
+fastapi>=0.115.0
+uvicorn>=0.30.0
+pydantic>=2.0.0
+
+# AI Provider SDKs
+openai>=1.50.0
+google-genai>=1.0.0
+ollama>=0.4.0
+
+# Environment & Config
+python-dotenv>=1.0.0
+
+# File Processing
+PyPDF2>=3.0.0
+easyocr>=1.7.0
+
+# Mistral SDK
+mistralai>=1.0.0
+
+# Timezone Support
+pytz>=2024.1
+
+# Web Search
+duckduckgo-search>=6.0.0
+
+# Async HTTP (for model fetching)
+aiohttp>=3.9.0
