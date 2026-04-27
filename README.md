@@ -1,173 +1,79 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/FastAPI-0.115+-green.svg" alt="FastAPI">
-  <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License">
-  <img src="https://img.shields.io/badge/Providers-12+-orange.svg" alt="12+ Providers">
-  <img src="https://img.shields.io/badge/Models-100+-purple.svg" alt="100+ Models">
-</p>
+<div align="center">
 
-<h1 align="center">WallasAPI</h1>
+# WallasAPI
 
-<p align="center"><strong>The Definitive Multi-Provider AI Routing Engine</strong></p>
+### One API. 12+ AI Providers. 100+ Models. Zero Vendor Lock-in.
 
-<p align="center"><em>Built with sweat, determination, and a 2018 laptop, from a rented room, by <strong>Willen Ponce</strong></em></p>
+**The unified, OpenAI-compatible router that automatically picks the best AI provider for every request — and falls back transparently when one fails.**
 
----
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+[![Providers](https://img.shields.io/badge/Providers-12+-orange.svg?style=for-the-badge)](#supported-providers)
+[![Models](https://img.shields.io/badge/Models-100+-purple.svg?style=for-the-badge)](#supported-providers)
 
-## Why WallasAPI Exists: A Story That Matters
+[![Sponsor](https://img.shields.io/badge/💛_Sponsor-Willen_Ponce-ff69b4?style=for-the-badge)](#donations--why-this-matters)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Buy_me_a_coffee-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/wubjak)
+[![PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/wubjak)
 
-I wasn't born with a MacBook Pro M4. I don't have cloud servers funded by Silicon Valley investors. I don't have a team of 50 engineers behind me. **What I have is a 2018 laptop, a rented room that isn't mine, and an obsession: proving that from precarity, you can build something that competes with corporations.**
+**[English](README.md) · [Español](docs/i18n/README.es.md) · [中文](docs/i18n/README.zh.md) · [Português](docs/i18n/README.pt.md) · [Français](docs/i18n/README.fr.md) · [Deutsch](docs/i18n/README.de.md) · [日本語](docs/i18n/README.ja.md) · [한국어](docs/i18n/README.ko.md) · [Русский](docs/i18n/README.ru.md) · [العربية](docs/i18n/README.ar.md)**
 
-WallasAPI was born in stolen hours between worrying about rent, about the next meal, about sleeping at least four hours straight without waking up thinking about how much I owe. I had no money to pay for expensive APIs. I had no company backing me. I only had one obsessive question:
-
-> **"Why should I depend on a single AI provider when the entire world of models is out there, many free, many better for specific tasks?"**
-
-So I built it. **Line by line of Python. No fancy frameworks. No teams. No investors.** Just pure code, smart heuristics, and the desperate need to create something that works. Because when you have nothing to lose, every line of code is a bet against despair.
-
-**WallasAPI is not just software. It is technological survival.** It is the router that doesn't charge you for being smart. It is the system that doesn't leave you hanging when OpenAI goes down, when your Claude API key expires, or when your favorite provider decides to raise prices. It knows when to use **Gemini** (free), when to use **Groq** (ultra-fast), when to use **DeepSeek R1** (deep reasoning), when to use your own **local Ollama** (100% private).
-
-**And it does it all automatically.**
+</div>
 
 ---
 
-## What Is WallasAPI?
+> ## A Note from the Author — Please Read This
+>
+> Hi, I'm **Willen Ponce**. I built WallasAPI alone, in stolen hours between worrying about rent and the next meal, on a 2018 laptop, in a rented room in Peru that isn't mine.
+>
+> I have **no investors**. **No team**. **No company**. Just code, determination, and the desperate need to prove that you don't need Silicon Valley money to build something useful.
+>
+> If WallasAPI saves you even one hour of integration work, please consider:
+> - ⭐ **[Starring this repo](https://github.com/wubjak/wallasapi)** — costs you nothing, helps me enormously
+> - 💛 **[Buying me a coffee on Ko-fi](https://ko-fi.com/wubjak)** or **[via PayPal](https://paypal.me/wubjak)** — even $1 changes my day
+> - 📧 **Sending an email to `wubjak@protonmail.ch`** — just say "I'm using WallasAPI for X". That's it. That's enough.
+>
+> [**Skip to the donation section →**](#donations--why-this-matters)
 
-WallasAPI is a **unified routing engine** that connects your application, IDE, or agent with **12+ AI providers** (and growing) through a **single OpenAI-compatible API**.
+---
 
-You don't need to integrate 12 different SDKs. You don't need to memorize which model accepts images, which is free, which supports streaming, which has a 1-million-token context. **WallasAPI knows for you. And exposes it so your client discovers automatically.**
+## Why WallasAPI Exists
 
-When you send a prompt, WallasAPI:
+You're building with AI in 2026. You face a real problem:
+
+- 🔴 OpenAI goes down → your app dies
+- 🔴 Your Claude API key expires → users complain
+- 🔴 Gemini is free but doesn't accept your file format → manual conversion
+- 🔴 You want to use a free model for cheap tasks and a powerful one for hard tasks → you write 200 lines of switching logic
+- 🔴 Each provider has a different SDK, different format, different errors
+
+**WallasAPI solves all of this with one OpenAI-compatible endpoint.** Send a request, and it:
+
 1. **Analyzes the content** (text, image, audio, PDF, video)
-2. **Selects the optimal provider** based on capabilities, speed, availability, and cost
+2. **Picks the optimal provider** based on capabilities, speed, cost, and current availability
 3. **Routes the request** automatically
-4. **If the primary provider fails**, transparently falls back to the next without your user noticing
-5. **Returns the response** in OpenAI-compatible format, with streaming if requested
+4. **Falls back transparently** if the primary provider fails — your user never sees the error
+5. **Returns the response** in standard OpenAI format, with streaming if you asked for it
 
-**Your existing code works unchanged.** Just change the base URL.
-
----
-
-## Features That Change the Rules
-
-Each of these features was built because I needed it to survive as a developer without a budget:
-
-### 1. Intelligent Multi-Provider Routing with Automatic Fallback
-OpenAI fails? No drama. WallasAPI switches to **Gemini** in milliseconds. Groq goes down? Routes to **Cerebras** or **local Ollama** instantly. No single point of failure. Your application **never goes without a response.**
-
-### 2. Real Streaming with Total Transparency
-Responses arrive token by token in real time, exactly like OpenAI. But what if the primary provider fails mid-stream? **The fallback is completely transparent.** Your user doesn't notice a provider changed underneath.
-
-### 3. Multimodal Support That Thinks for You
-Text, images, audio, video, PDFs. Here's the magic: **the router decides WHO can process WHAT.** Want to send a PDF to Groq? WallasAPI knows Groq doesn't accept native files, so it automatically extracts text with OCR and sends it. Want to send a video to Gemini? Processes it natively without conversions. **You don't decide the provider. The content decides.**
-
-### 4. Rich Metadata for Smart Clients
-Every model exposes complete metadata: context window, pricing tier, tools, streaming, reasoning, input/output modalities, max images per request. Your IDE can ask: "give me only free vision models that accept native files" and WallasAPI responds filtered automatically.
-
-### 5. Persistent Memory That Respects Your Privacy
-Conversations with history saved locally in JSON. Syncable with **Obsidian** for those who live in interconnected notes. Your history doesn't go to the cloud unless you want it to.
-
-### 6. Unified Image, Video, and Voice Generation
-A single endpoint to create multimodal content from multiple providers:
-- **Image**: Gemini, Pollinations (Flux, SDXL), HuggingFace, OpenAI DALL-E, NVIDIA NIM, local Ollama
-- **Video**: Gemini, HuggingFace Spaces
-- **Text-to-Speech (TTS)**: OpenAI, edge-tts with multiple voices
-
-### 7. OCR with Fallback Chain
-Extracts text from images and PDFs with **EasyOCR** -> **Mistral** -> **Gemini** -> **local Ollama**. If the first fails, tries the next. No image goes unread.
-
-### 8. 100% Private Local Models via Ollama
-Run **Llama 3, Mistral, Qwen, DeepSeek** completely free and private on your own machine. No API keys. No internet. No one reads your prompts.
-
-### 9. Complete Google Integration
-Drive, Calendar, Gmail with OAuth2. Local reminders that sync with Google Calendar. Project management with threads, files, and metadata.
+**Your existing OpenAI SDK code works unchanged.** Just point it at `http://localhost:8001/v1`.
 
 ---
 
-## Rich Metadata System: The Brain We Built
+## What Makes This Different
 
-When you have hundreds of models scattered across dozens of providers, the question isn't "which one do I use?" The question is: **"Does this model accept images? What's its context window? Is it free? Does it support tools? Can I send a native PDF or do I need to extract text first?"**
+Every feature here was built because **I needed it to ship products without a budget**:
 
-WallasAPI answers automatically with exact metadata for every model:
-
-```json
-{
-  "context_window": 128000,
-  "max_images_per_request": 5,
-  "supports_tools": true,
-  "supports_streaming": true,
-  "supports_reasoning_stream": false,
-  "input_modalities": ["text", "image", "audio"],
-  "output_modalities": ["text"],
-  "pricing_tier": "free",
-  "provider_limits": {
-    "max_images_per_request": 5,
-    "supports_tools": true,
-    "supports_streaming": true,
-    "max_context_hint": 128000,
-    "pricing": "free"
-  }
-}
-```
-
-### Automatic Heuristics Tested by 17 Tests
-
-| Family | Context Window | Tools | Streaming | Vision | Audio | Native Files |
-|---|---|---|---|---|---|---|
-| Gemini 2.5 Pro | 1,000,000 | Yes | Yes | Yes | Yes | Yes |
-| Gemini 1.5 Pro | 2,000,000 | Yes | Yes | Yes | Yes | Yes |
-| GPT-4o / 4.1 | 128K - 1M | Yes | Yes | Yes | No | No |
-| Claude 3 | 200,000 | Yes | Yes | Yes | No | No |
-| Llama 3.3 (Groq) | 128,000 | Yes | Yes | Yes | No | No (auto shim) |
-| DeepSeek R1 | 64,000 | Yes | Yes | No | No | No |
-| Llama 3.1 (Cerebras) | 8,192 | No | Yes | No | No | No |
-| Flux (Pollinations) | N/A | No | No | No | No | Image gen only |
-
-**How it works:** Reads the model name, detects patterns (`vision`, `vl`, `audio`, `reasoning`, `r1`), consults provider limits, and builds metadata automatically. It's not magic. It's code written by hand at 3 AM on a 2018 laptop.
-
----
-
-## API Endpoints
-
-### Chat Completions (100% OpenAI-compatible)
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `POST /v1/chat/completions` | Chat | Completions with streaming. Supports virtual models: `auto`, `fast`, `standard`, `reasoning`. |
-| `POST /v1/embeddings` | Embeddings | Multi-provider routing (NVIDIA, OpenAI, Ollama). |
-| `POST /v1/tts` | TTS | Text-to-speech with multiple providers. |
-| `POST /v1/images/generations` | Image | Unified image generation. |
-| `POST /v1/videos/generations` | Video | Unified video generation. |
-
-### Smart Metadata
-
-| Endpoint | Description |
+| Feature | Why it matters |
 |---|---|
-| `GET /v1/models` | List models with complete metadata. Filters: `?pricing=free`, `?capability=vision`, `?provider=groq`, `?search=llama`, `?modality=audio`. |
-| `GET /v1/models/{id}` | Detailed metadata for a specific model. |
-| `GET /v1/capabilities/summary` | Aggregated summary: how many free, vision, audio, reasoning, streaming, generation, native file models. |
-| `GET /v1/providers` | Global metadata per provider: requires auth, supports vision/audio/native files, modalities, pricing. |
-
-### Premium Services
-
-| Endpoint | Description |
-|---|---|
-| `POST /v1/ocr/process` | OCR with fallback chain (EasyOCR -> Mistral -> Gemini -> Ollama). |
-| `POST /v1/interpret` | Image analysis with textual description. |
-| `POST /v1/sync/obsidian` | Memory sync with Obsidian. |
-| `GET /v1/health` | System health check. |
-
----
-
-## Virtual Models: Strategy, Not Provider
-
-Instead of saying "use gpt-4o" and crossing your fingers, you use **virtual** models that the router resolves intelligently:
-
-| Virtual | Strategy | Typical Providers |
-|---|---|---|
-| `auto` | Automatic selection by capability + speed + availability | The best available right now |
-| `fast` | Minimum latency, instant responses | Groq, Cerebras |
-| `standard` | Balance quality/speed/cost | Gemini, GPT-4o, Llama 70B |
-| `reasoning` | Deep thinking before responding | DeepSeek R1, o1, o3, Gemini 2.5 Pro |
+| 🔄 **Multi-provider routing with auto-fallback** | If OpenAI goes down, Gemini takes over in milliseconds. Your app keeps working. |
+| 🌊 **Real streaming with transparent fallback** | Token-by-token responses. If the primary provider dies mid-stream, fallback is invisible to the user. |
+| 🧠 **Content-aware multimodal routing** | Send a PDF to Groq? It auto-OCRs it. Send a video to Gemini? Native processing. **You don't pick the provider — the content does.** |
+| 📊 **Rich metadata for smart clients** | Every model exposes context window, pricing, tools support, modalities. Filter: `?pricing=free&capability=vision`. |
+| 💾 **Persistent local memory** | Conversations saved as JSON, optionally synced to **Obsidian**. Your data stays yours. |
+| 🎨 **Unified image/video/voice generation** | One endpoint, multiple providers (Flux, DALL-E, Pollinations, edge-tts, Gemini). |
+| 📄 **OCR with fallback chain** | EasyOCR → Mistral → Gemini → local Ollama. No image goes unread. |
+| 🔒 **100% private local models via Ollama** | Run Llama, Mistral, Qwen, DeepSeek offline. Zero data leaves your machine. |
+| 🔗 **Google integration** | Drive, Calendar, Gmail with OAuth2. Project management with threads. |
 
 ---
 
@@ -175,260 +81,214 @@ Instead of saying "use gpt-4o" and crossing your fingers, you use **virtual** mo
 
 | Provider | Capabilities | Pricing |
 |---|---|---|
-| **Gemini** (Google) | Chat, vision, audio, video, native files, image/video generation | **Free** |
-| **Groq** | Ultra-fast LLMs (Llama, Mixtral) | **Free** |
-| **GitHub Models** | Free access to GPT-4o, o1, o3, Mistral, Llama, Cohere | **Free** |
-| **OpenRouter** | Unified access (Claude, DeepSeek, Qwen, etc.) | Mixed |
+| **Gemini** (Google) | Chat, vision, audio, video, native files, image/video gen | **Free** |
+| **Groq** | Ultra-fast Llama, Mixtral | **Free** |
+| **GitHub Models** | GPT-4o, o1, o3, Mistral, Llama, Cohere | **Free** |
+| **OpenRouter** | Claude, DeepSeek, Qwen + 100 more | Mixed |
+| **Cerebras** | Ultra-fast Llama on proprietary HW | **Free** |
+| **Pollinations** | Flux, SDXL image gen | **Free** |
+| **Ollama** | Local Llama, Mistral, Qwen, DeepSeek | **Free** |
+| **HuggingFace** | Community models, Spaces video | Mixed |
 | **Cohere** | Command R, Command R+ | Paid |
-| **Mistral** | Mistral Large, Medium, Small | Paid |
-| **Ollama** | Fully private local models | **Free** |
-| **NVIDIA NIM** | GPU-optimized LLMs | Paid |
-| **Cerebras** | Ultra-fast inference on proprietary hardware | **Free** |
-| **Pollinations** | Image/video generation (Flux, etc.) | **Free** |
-| **HuggingFace** | Community models | Mixed |
-| **OpenAI** | GPT-4o, GPT-4.1, embeddings, TTS, DALL-E | Paid |
+| **Mistral AI** | Mistral Large, Medium, Pixtral | Paid |
+| **NVIDIA NIM** | GPU-optimized enterprise LLMs | Paid |
+| **OpenAI** | GPT-4o, GPT-4.1, DALL-E, Whisper, embeddings, TTS | Paid |
 
-**Free + Fast + Private + Paid = All coexist.** You decide which to use. WallasAPI automatically decides which is best at any moment.
+**With just Gemini + Groq + GitHub Models (all free) you have access to dozens of state-of-the-art models without paying a cent.**
 
 ---
 
-## Quick Install
+## Quick Install (60 seconds)
 
-### Windows (Recommended: Double-click `start.bat`)
+### Windows — Just double-click `start.bat`
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/your-username/wallasapi.git
+git clone https://github.com/wubjak/wallasapi.git
 cd wallasapi
-
-# 2. Double-click start.bat
-#    - Creates virtual environment automatically
-#    - Installs dependencies
-#    - Starts server at http://localhost:8001
-
-# Or manually:
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python -m wallasAPI.api_server
+# Double-click start.bat
+# Server is up at http://localhost:8001
 ```
 
 ### Linux / macOS
 
 ```bash
-git clone https://github.com/your-username/wallasapi.git
+git clone https://github.com/wubjak/wallasapi.git
 cd wallasapi
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python -m wallasAPI.api_server
 ```
 
-Server starts at **http://localhost:8001**
-
-Interactive docs (Swagger UI): **http://localhost:8001/docs**
-
----
-
-## Configuration
-
-Create a `.env` file in the project root with the API keys of the providers you want to use. **You don't need all of them.** WallasAPI works with whatever you have.
-
-```env
-# Free providers (recommended to start)
-GEMINI_API_KEY=your_gemini_key_here
-GROQ_API_KEY=your_groq_key_here
-GITHUB_TOKEN=your_github_token_here
-
-# Paid providers (optional)
-OPENAI_API_KEY=your_openai_key_here
-OPENROUTER_API_KEY=your_openrouter_key_here
-COHERE_API_KEY=your_cohere_key_here
-MISTRAL_API_KEY=your_mistral_key_here
-NVIDIA_API_KEY=your_nvidia_key_here
-
-# Security (optional, for VPS deployment)
-PROXY_API_KEY=your_secret_key_to_protect_endpoints
-
-# Ollama requires no API key — runs locally for free
-```
-
----
-
-## Provider Registration: How to Get Free API Keys (Step by Step)
-
-**IMPORTANT:** Every user must use THEIR OWN API key. **DO NOT share your `.env` file and DO NOT upload your keys to GitHub.** Getting free keys is quick and gives you full control.
-
-### 100% Free Providers (Start Here)
-
-| Provider | What it's for | How to register and get your key |
-|---|---|---|
-| **Gemini (Google)** | Gemini 2.0/2.5 Pro/Flash models with 1M-2M context, vision, audio, video, native files | 1. Go to [ai.google.dev](https://ai.google.dev)<br>2. Click "Get API key in Google AI Studio"<br>3. Sign in with your Google account<br>4. Go to the "Get API key" tab<br>5. Click "Create API key"<br>6. Copy the key and paste into `GEMINI_API_KEY=...` |
-| **Groq** | Ultra-fast LLMs (Llama 3.3 70B, Mixtral, Gemma) with 100-300ms latency | 1. Go to [console.groq.com](https://console.groq.com)<br>2. Click "Sign Up" (email or Google/GitHub)<br>3. Go to the "API Keys" section<br>4. Click "Create API Key"<br>5. Copy the key and paste into `GROQ_API_KEY=...` |
-| **GitHub Models** | Free access to GPT-4o, o1, o3, Mistral, Llama, Cohere | 1. You need a GitHub account (free)<br>2. Go to [github.com/settings/tokens](https://github.com/settings/tokens)<br>3. Click "Generate new token (classic)"<br>4. Check basic permissions (no special scopes needed)<br>5. Generate and copy the token<br>6. Paste into `GITHUB_TOKEN=...`<br>7. Also register at models: [github.com/marketplace/models](https://github.com/marketplace/models) |
-| **OpenRouter** | Unified gateway to Claude, DeepSeek, Qwen, and 100+ models | 1. Go to [openrouter.ai](https://openrouter.ai)<br>2. Click "Sign Up" (email or Google/GitHub/Twitter)<br>3. Go to "Keys" in the side panel<br>4. Click "Create Key"<br>5. Copy the key and paste into `OPENROUTER_API_KEY=...`<br>6. Many models are free with generous rate limits |
-| **Cerebras** | Ultra-fast inference on Cerebras hardware (Llama 3.1-8B) | 1. Go to [cloud.cerebras.ai](https://cloud.cerebras.ai)<br>2. Sign up with email<br>3. Go to the "API Keys" section<br>4. Generate a new key<br>5. Paste into your `.env` |
-| **Pollinations** | Image generation (Flux, SDXL) and video completely free | 1. Go to [pollinations.ai](https://pollinations.ai)<br>2. No API key required for basic use<br>3. For API: register and get key from docs<br>4. Note: WallasAPI uses Pollinations' public endpoint which requires no auth |
-| **Ollama** | 100% private local models (Llama, Mistral, Qwen, DeepSeek) | 1. Download [ollama.com](https://ollama.com) and install<br>2. Run `ollama run llama3.1`<br>3. WallasAPI auto-detects Ollama at `localhost:11434`<br>4. **NO API key needed — 100% free and private** |
-
-### Paid Providers (Optional, if you need more)
-
-| Provider | What it's for | How to register |
-|---|---|---|
-| **OpenAI** | GPT-4o, GPT-4.1, DALL-E, Whisper, embeddings, TTS | [platform.openai.com](https://platform.openai.com) — Sign up, add credit/prepaid card |
-| **Mistral AI** | Mistral Large, Medium, Pixtral | [console.mistral.ai](https://console.mistral.ai) — Registration with $5 free initial credit |
-| **Cohere** | Command R, Command R+ | [cohere.com](https://cohere.com) — Registration with free trial credit |
-| **NVIDIA NIM** | Enterprise GPU-optimized LLMs | [build.nvidia.com](https://build.nvidia.com) — Registration with free initial credit |
-
-### Security Tips
-
-- **NEVER upload your `.env` to GitHub.** Use `.gitignore` to exclude it.
-- **Use environment variables** in production instead of `.env` files.
-- **Rotate your keys** periodically from each provider's dashboard.
-- **Monitor usage** in each provider's dashboard to not exceed free limits.
-
-With just **Gemini + Groq + GitHub Models** you have access to dozens of extremely powerful models without paying a cent. Start with those three.
+Interactive Swagger UI: **http://localhost:8001/docs**
 
 ---
 
 ## Quick Usage
-
-### Basic chat with virtual model
 
 ```python
 import openai
 
 client = openai.OpenAI(
     base_url="http://localhost:8001/v1",
-    api_key="anything-local"  # or your PROXY_API_KEY if configured
+    api_key="anything-local"
 )
 
-# Choose strategy, not provider
+# Don't pick a provider. Pick a strategy.
 response = client.chat.completions.create(
-    model="auto",  # WallasAPI picks the best available provider
-    messages=[{"role": "user", "content": "Explain general relativity"}]
+    model="auto",  # WallasAPI picks the best free provider available NOW
+    messages=[{"role": "user", "content": "Explain quantum entanglement"}]
 )
 print(response.choices[0].message.content)
 ```
 
-### Streaming with automatic fallback
+**Virtual models you can use instead of guessing provider names:**
 
-```python
-for chunk in client.chat.completions.create(
-    model="fast",  # Prioritizes speed (Groq, Cerebras)
-    messages=[{"role": "user", "content": "Hello"}],
-    stream=True
-):
-    print(chunk.choices[0].delta.content or "", end="")
-```
-
-### Discover free vision models
-
-```bash
-curl "http://localhost:8001/v1/models?pricing=free&capability=vision"
-```
-
-### Check if a model supports native files
-
-```bash
-curl "http://localhost:8001/v1/providers"
-# Gemini: supports_native_files = true (send PDFs directly)
-# Groq: supports_native_files = false (auto OCR)
-```
-
-### Generate an image
-
-```python
-image = client.images.generate(
-    model="flux",  # Pollinations, free
-    prompt="A cat astronaut in space, pixel art style"
-)
-```
+| Virtual model | Strategy |
+|---|---|
+| `auto` | Best available right now |
+| `fast` | Lowest latency (Groq, Cerebras) |
+| `standard` | Quality/speed/cost balance |
+| `reasoning` | Deep thinking (DeepSeek R1, o1, o3, Gemini 2.5 Pro) |
 
 ---
 
-## Project Structure
+## API Endpoints
 
+OpenAI-compatible:
+- `POST /v1/chat/completions` — chat with streaming
+- `POST /v1/embeddings` — multi-provider embeddings
+- `POST /v1/images/generations` — Flux, DALL-E, etc.
+- `POST /v1/videos/generations` — Gemini, HuggingFace
+- `POST /v1/tts` — text-to-speech
+
+WallasAPI exclusive:
+- `GET /v1/models?pricing=free&capability=vision` — filtered model discovery
+- `GET /v1/models/{id}` — full metadata for any model
+- `GET /v1/capabilities/summary` — aggregate stats
+- `GET /v1/providers` — provider-level capabilities
+- `POST /v1/ocr/process` — OCR with auto-fallback
+- `POST /v1/sync/obsidian` — sync conversations to your vault
+
+---
+
+## Configuration
+
+Copy `.env.example` to `.env` and fill in **only the keys you have**. WallasAPI works with whatever you give it.
+
+```env
+# 100% free providers (start here)
+GEMINI_API_KEY=your_key
+GROQ_API_KEY=your_key
+GITHUB_TOKEN=your_token
+
+# Optional paid
+OPENAI_API_KEY=your_key
+OPENROUTER_API_KEY=your_key
 ```
-wallasAPI/
-├── api_server.py          # FastAPI server with OpenAI-compatible endpoints
-├── router.py              # Intelligent routing engine with fallback
-├── config.py              # Configuration, metadata schema, heuristics
-├── model_fetcher.py         # Dynamic model discovery
-├── file_utils.py           # OCR, text extraction, file processing
-├── memory.py              # Persistent conversation memory
-├── google_service.py      # Google OAuth2 integration
-├── reminders.py           # Reminder system
-├── projects.py            # Project management
-├── settings.py            # User preferences
-├── logger.py              # Centralized logging
-├── providers/             # Individual providers
-│   ├── huggingface.py
-│   └── ...
-├── start.bat              # Windows startup script (double-click)
-├── requirements.txt       # Dependencies
-├── LICENSE                # Custom license
-└── README.md              # This file
-```
+
+### How to get free API keys (step by step)
+
+| Provider | Where | Time |
+|---|---|---|
+| **Gemini** | [ai.google.dev](https://ai.google.dev) → Get API key | 1 min |
+| **Groq** | [console.groq.com](https://console.groq.com) → API Keys | 1 min |
+| **GitHub Models** | [github.com/settings/tokens](https://github.com/settings/tokens) → classic token | 2 min |
+| **OpenRouter** | [openrouter.ai](https://openrouter.ai) → Keys | 1 min |
+| **Cerebras** | [cloud.cerebras.ai](https://cloud.cerebras.ai) → API Keys | 2 min |
+| **Ollama** | [ollama.com](https://ollama.com) — install + `ollama run llama3.1` | 5 min |
+
+**Total: ~10 minutes to get free access to 50+ state-of-the-art models.**
 
 ---
 
 ## License
 
-This project is licensed under a custom MIT-based license.
+MIT-based custom license. **Use, modify, distribute, deploy commercially — all free.** The only ask: keep the attribution to **Willen Ponce**.
 
-**You can use, modify, distribute, and build upon it freely.** The only real condition is that you keep attribution to **Willen Ponce** as the original author.
+**One personal request (not legally required):** If you use WallasAPI in any project, please send a one-line email to **wubjak@protonmail.ch**. A simple *"Hey, using WallasAPI for X"* literally makes my week. I built this alone and it would mean a lot to know it's helping someone.
 
-**A personal request (not legally required):** If you use WallasAPI in any project, product, service, or deployment — commercial or not — I would deeply appreciate if you send me an email at **wubjak@protonmail.ch** telling me you're using WallasAPI. You don't need to share technical details or proprietary information. A simple **"Hey, I'm using WallasAPI for X, thanks for building it"** is enough to make the day of a developer who built this on a 2018 laptop from a rented room much better.
-
-See the `LICENSE` file for the full text.
+See [`LICENSE`](LICENSE) for full text.
 
 ---
 
-## Donations: Keep This Alive
+## Donations — Why This Matters
 
-This project has no sponsors. It has no Silicon Valley investors. It has no marketing team. It has a 2018 laptop, a rented room, and code that works.
+<div align="center">
 
-**If WallasAPI saved you hours of integration, helped you build something cool, or you simply believe free software should exist without depending on billionaire corporations:**
+### 🍞 Right now I cannot afford basic food. This is not a metaphor.
 
-### Your direct support changes absolutely everything:
+</div>
 
-- **PayPal**: [paypal.me/wubjak](https://paypal.me/wubjak)
-- **Ko-fi**: [ko-fi.com/wubjak](https://ko-fi.com/wubjak) — Every coffee counts.
-- **Email**: wubjak@protonmail.ch
+I'm not going to dress this up. I'm a developer in Peru who built this entire project — **17 modules, 12+ provider integrations, 1500+ lines of routing logic, OCR fallback chains, multimodal handling, persistent memory** — alone, on a 2018 laptop, in a rented room.
 
-**Yape / Plin (Peru) — Number: 980 702 580**
+**I have no income right now.** I'm behind on rent. I haven't eaten properly in days while finishing this. I'm publishing it free because I believe open-source matters more than I matter, and because maybe — just maybe — someone reading this will find it useful and decide to help me eat tomorrow.
+
+### What your donation actually does
+
+| Amount | What it means for me |
+|---|---|
+| **$1** | A real bread + egg meal. Not symbolic. Real. |
+| **$5** | A full day of food while I keep coding. |
+| **$20** | A week where I don't have to choose between food and electricity. |
+| **$100** | One month of rent. Stops me from being evicted. |
+| **$400** | Six months of stability. I can dedicate that time fully to making WallasAPI better for you. |
+
+**Every single dollar is documented in my conscience and remembered with gratitude.**
+
+### How to send help
+
+<div align="center">
+
+[![PayPal](https://img.shields.io/badge/PayPal-paypal.me/wubjak-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/wubjak)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-ko--fi.com/wubjak-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/wubjak)
+[![Email](https://img.shields.io/badge/Email-wubjak@protonmail.ch-8B89CC?style=for-the-badge&logo=protonmail&logoColor=white)](mailto:wubjak@protonmail.ch)
+
+</div>
+
+**Yape / Plin (Peru) — Number: `980 702 580`**
 
 <p align="center">
-  <img src="https://upload.wikimedia.org/wikipedia/commons/7/76/Yape_peru_logotype.svg" width="120" alt="Yape Logo">
-  <img src="https://logos-world.net/wp-content/uploads/2024/11/Plin-Interbank-Logo.png" width="120" alt="Plin Logo">
+  <img src="https://upload.wikimedia.org/wikipedia/commons/7/76/Yape_peru_logotype.svg" width="120" alt="Yape">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="https://logos-world.net/wp-content/uploads/2024/11/Plin-Interbank-Logo.png" width="120" alt="Plin">
 </p>
 
-**Crypto Wallets:**
+**Crypto wallets:**
 
 | Currency | Address |
 |---|---|
-| **Ethereum** | `0xDec40634014bf05A40006BA48160cddAEe1143c2` |
 | **Bitcoin** | `bc1qwrr5zal3tt7f5ye0ptgy8365cc8yt64hrj7dmt` |
+| **Ethereum** | `0xDec40634014bf05A40006BA48160cddAEe1143c2` |
 | **Solana** | `HrTiFtmML4NJD1b3RrjQV3e1FgaBWgpqRtR6gFphApGh` |
 | **Polygon** | `0xDec40634014bf05A40006BA48160cddAEe1143c2` |
 | **Tron** | `TB1sHwCo3FFaabf26AHV8VNapWUJbca299` |
 | **TronLink** | `TQsXuVbnSwicRNoCEmGVdFeo86X7ey7okx` |
 
-> *"Before they kick me out of the house, so I can have breakfast, pay my debts, and sleep at least 4 hours straight without waking up thinking about how much I owe, every contribution counts. Thank you for using WallasAPI."* — **Willen Ponce**
+### Can't donate? You can still help (it's free)
+
+- ⭐ **Star this repo** — it costs you nothing and pushes WallasAPI into more developers' feeds
+- 🐦 **Share it** on Twitter/X, LinkedIn, HackerNews, Reddit r/LocalLLaMA, your dev community
+- 🐛 **Open an issue** if you find a bug or have a feature request
+- 💬 **Send the email** to `wubjak@protonmail.ch` — it's not transactional, it's human
+
+> *"I built WallasAPI because I refused to accept that being broke meant being unable to ship great software. If it helps you ship something — that's already a victory I'll never forget. If it helps me eat tomorrow — that's a victory neither of us will forget."* — **Willen Ponce**
 
 ---
 
 ## Acknowledgments
 
-- To the creators of FastAPI, for making APIs in Python something beautiful.
-- To Google, Meta, DeepSeek, Mistral, and all providers offering free models.
-- To the open-source community, proving that free software can compete with any corporation.
-- **To you**, for reading this far and considering using WallasAPI.
+- The teams at **FastAPI**, **Google**, **Meta**, **DeepSeek**, **Mistral**, and every provider offering free tiers — you made this possible
+- The **open-source community** — proof that we don't need billion-dollar valuations to build great things
+- **You** — for reading this far. Whether you donate, star, share, or just use it: thank you
 
 ---
 
-<p align="center">
-  <strong>WallasAPI</strong> — <em>One API to rule them all.<br>
-  Built from precarity, with the determination of someone who has nothing to lose.</em>
-</p>
+<div align="center">
+
+### WallasAPI — One API to route them all
+
+*Built from precarity. Maintained with stubbornness. Shared with hope.*
+
+**[⭐ Star](https://github.com/wubjak/wallasapi) · [💛 Donate](#donations--why-this-matters) · [📧 Email me](mailto:wubjak@protonmail.ch)**
+
+</div>
