@@ -1,8 +1,8 @@
 <div align="center">
 
-# WallasAPI
+<img src="logos/socialbanner.png" alt="WallasAPI — 12+ AI Providers · 100+ Models · One API" width="100%">
 
-### One API. 12+ AI Providers. 100+ Models. Zero Vendor Lock-in.
+# One API. 12+ AI Providers. 100+ Models. Zero Vendor Lock-in.
 
 **The unified, OpenAI-compatible router that automatically picks the best AI provider for every request — and falls back transparently when one fails.**
 

@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="../../logos/logoES.png" alt="WallasAPI — Motor de Enrutamiento de IA Unificado Multi-Proveedor" width="600">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/FastAPI-0.115+-green.svg" alt="FastAPI">
   <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License">
@@ -6,7 +10,11 @@
   <img src="https://img.shields.io/badge/Models-100+-purple.svg" alt="100+ Models">
 </p>
 
-<h1 align="center">WallasAPI</h1>
+<p align="center">
+  <a href="https://ko-fi.com/wubjak"><img src="https://img.shields.io/badge/Ko--fi-Apoya_a_Willen-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
+  <a href="https://paypal.me/wubjak"><img src="https://img.shields.io/badge/PayPal-Donar-00457C?style=for-the-badge&logo=paypal&logoColor=white" alt="PayPal"></a>
+  <a href="../../README.md"><img src="https://img.shields.io/badge/🌐-English-blue?style=for-the-badge" alt="English"></a>
+</p>
 
 <p align="center"><strong>El Enrutador Inteligente Multi-Proveedor de IA Definitivo</strong></p>
 
