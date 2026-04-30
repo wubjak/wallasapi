@@ -178,7 +178,7 @@ PROVIDER_METADATA = {
         "supports_reasoning_stream": False,
         "supports_audio_input": False,
         "supports_native_files": False,
-        "pricing": "paid",  # La Plateforme is paid
+        "pricing": "mixed",  # small/medium/pixtral have free tier, large/codestral are paid
         "input_modalities": ["text", "image"],
         "output_modalities": ["text"],
     },
@@ -202,7 +202,7 @@ PROVIDER_METADATA = {
         "supports_reasoning_stream": True,
         "supports_audio_input": True,
         "supports_native_files": True,   # PDF, video, etc.
-        "pricing": "free",  # Flash is free-tier generous
+        "pricing": "mixed",  # Flash/Lite are free-tier generous, Pro has limits
         "input_modalities": ["text", "image", "audio", "video", "pdf"],
         "output_modalities": ["text", "image", "video"],
     },
@@ -432,17 +432,14 @@ def get_output_modalities(model_id: str, provider: str, capabilities: list) -> l
 
 
 def get_pricing_tier(model_id: str, provider: str, capabilities: list) -> str:
-    """Returns 'free', 'paid', or 'mixed' for a model."""
+    """Returns 'free', 'paid', or 'mixed' for a model.
+
+    The FREE capability flag (set by _add_free_flag in model_fetcher.py) is the
+    source of truth. It already applies provider-specific and model-specific rules
+    (e.g., OpenRouter :free suffix, Mistral small/medium/pixtral, Gemini flash/pro).
+    """
     caps = set(capabilities)
     if FREE in caps:
-        # Some providers have mixed tiers
-        meta = PROVIDER_METADATA.get(provider, {})
-        provider_pricing = meta.get("pricing", "unknown")
-        if provider_pricing == "mixed":
-            # Check if this specific model is free on openrouter
-            if ":free" in model_id.lower() or "free" in model_id.lower():
-                return "free"
-            return "paid"  # Assume paid unless explicitly marked free on mixed providers
         return "free"
     return "paid"
 

@@ -74,7 +74,59 @@ class AIRouter:
 
     def __init__(self):
         self.clients: Dict[str, Any] = {}
-        self._cooldowns: Dict[str, float] = {} # { "provider/model": timestamp }
+        self._circuit: Dict[str, Dict[str, Any]] = {}  # "provider/model" -> {failed_at, fail_count, success_count, avg_latency_ms, last_error}
+
+    # --- Circuit Breaker helpers ---
+
+    def _circuit_key(self, provider_name: str, model_id: str) -> str:
+        return f"{provider_name}/{model_id}"
+
+    def _is_available(self, key: str) -> bool:
+        state = self._circuit.get(key)
+        if not state:
+            return True
+        failed_at = state.get("failed_at", 0)
+        if failed_at == 0:
+            return True
+        fail_count = state.get("fail_count", 0)
+        # Exponential backoff: 300s, 600s, 1800s
+        cooldowns = [0, 300, 600, 1800]
+        idx = min(fail_count, len(cooldowns) - 1)
+        cooldown = cooldowns[idx]
+        return time.time() >= failed_at + cooldown
+
+    def _mark_failure(self, key: str, reason: str) -> None:
+        state = self._circuit.setdefault(key, {"fail_count": 0, "success_count": 0, "avg_latency_ms": 0.0})
+        state["failed_at"] = time.time()
+        state["fail_count"] = state.get("fail_count", 0) + 1
+        state["last_error"] = reason
+        log.info(f"[CIRCUIT] {key} falló ({reason}). Cooldown activado. Fallos consecutivos: {state['fail_count']}")
+
+    def _mark_success(self, key: str, latency_ms: float) -> None:
+        state = self._circuit.setdefault(key, {"fail_count": 0, "success_count": 0, "avg_latency_ms": 0.0})
+        state["success_count"] = state.get("success_count", 0) + 1
+        state["fail_count"] = 0
+        state["failed_at"] = 0
+        alpha = 0.3
+        prev = state.get("avg_latency_ms", 0.0)
+        state["avg_latency_ms"] = alpha * latency_ms + (1 - alpha) * prev if prev > 0 else latency_ms
+
+    def get_circuit_stats(self) -> Dict[str, Any]:
+        return {
+            "circuits": [
+                {
+                    "key": k,
+                    "fail_count": v.get("fail_count", 0),
+                    "success_count": v.get("success_count", 0),
+                    "avg_latency_ms": round(v.get("avg_latency_ms", 0.0), 1),
+                    "failed_at": v.get("failed_at", 0),
+                    "cooldown_seconds_remaining": max(0, (v.get("failed_at", 0) + [0, 300, 600, 1800][min(v.get("fail_count", 0), 3)]) - time.time()) if v.get("failed_at", 0) else 0,
+                    "last_error": v.get("last_error", ""),
+                }
+                for k, v in self._circuit.items()
+            ],
+            "timestamp": time.time(),
+        }
 
     def get_embeddings(self, texts: List[str], model: str = "text-embedding-3-small") -> List[List[float]]:
         """
@@ -624,15 +676,18 @@ class AIRouter:
         model_list = self._get_ordered_model_list(preferred_provider, preferred_model, reasoning, prompt_len=total_prompt_len)
         log.info(f"[ROUTER] Solicitud (stream): {len(model_list)} modelos candidatos.")
 
-        # Cooldown bypass logic
+        # Circuit breaker: skip recently failed models with exponential backoff
         available_models = [
-            m for m in model_list 
-            if f"{m['provider']}/{m['id']}" not in self._cooldowns or __import__('time').time() >= self._cooldowns[f"{m['provider']}/{m['id']}"]
+            m for m in model_list
+            if self._is_available(f"{m['provider']}/{m['id']}")
         ]
-        
+
         if not available_models and model_list:
-            log.warning("[!] Todos los modelos en cooldown (stream). Forzando reintento.")
-            available_models = model_list[:10]
+            log.warning("[!] Todos los modelos en cooldown (stream). Forzando reintento con prioridad de velocidad.")
+            from .config import PROVIDER_SPEED_PRIORITY
+            p_map = {p: i for i, p in enumerate(PROVIDER_SPEED_PRIORITY)}
+            model_list_sorted = sorted(model_list, key=lambda m: p_map.get(m.get("provider", "").lower(), 99))
+            available_models = model_list_sorted[:10]
 
         for model_info in available_models:
             provider_name = model_info["provider"]
@@ -640,6 +695,8 @@ class AIRouter:
             capabilities = model_info["capabilities"]
 
             # Capability filtering
+            start_time = time.time()
+            circuit_key = self._circuit_key(provider_name, model_id)
 
             try:
                 p_cfg = PROVIDERS.get(provider_name)
@@ -743,24 +800,23 @@ class AIRouter:
                     mem.save_message("user", mem_user_prompt)
                     mem.save_message("assistant", full_response)
 
+                self._mark_success(circuit_key, (time.time() - start_time) * 1000)
                 return  # Success
 
             except Exception as e:
                 err_msg = str(e).lower()
+                ck = self._circuit_key(provider_name, model_id)
                 if any(x in err_msg for x in ["429", "rate limit", "insufficient_quota", "overloaded"]):
-                    log.info(f"[LIMIT] {provider_name}/{model_id}. Silenciando por 5 min.")
-                    self._cooldowns[f"{provider_name}/{model_id}"] = __import__('time').time() + 300
+                    self._mark_failure(ck, "rate_limit")
                 elif any(x in err_msg for x in ["402", "403", "insufficient credits", "credit balance"]):
-                    log.info(f"[AUTH/CREDIT] {provider_name}/{model_id} sin saldo o acceso. Silenciando por 1 hora.")
-                    self._cooldowns[f"{provider_name}/{model_id}"] = __import__('time').time() + 3600
+                    self._mark_failure(ck, "auth/credit")
                 elif "404" in err_msg or "not found" in err_msg:
-                    log.info(f"[MISSING] {provider_name}/{model_id} no encontrado. Silenciando por 1 hora.")
-                    self._cooldowns[f"{provider_name}/{model_id}"] = __import__('time').time() + 3600
+                    self._mark_failure(ck, "not_found")
                 elif any(x in err_msg for x in ["413", "too large", "too many images"]):
-                    log.info(f"[SIZE] {provider_name}/{model_id} rechazó el tamaño. Silenciando por 5 min.")
-                    self._cooldowns[f"{provider_name}/{model_id}"] = __import__('time').time() + 300
+                    self._mark_failure(ck, "payload_too_large")
                 else:
                     log.warning(f"[STREAM] {provider_name}/{model_id}: {e}")
+                    self._mark_failure(ck, f"unexpected: {type(e).__name__}")
                 continue
 
         yield {"type": "content", "chunk": "ERROR: No se pudo obtener respuesta de ningun proveedor."}
@@ -809,15 +865,18 @@ class AIRouter:
         model_list = self._get_ordered_model_list(preferred_provider, preferred_model, reasoning, prompt_len=total_prompt_len)
         log.info(f"[ROUTER] Solicitud (sync): {len(model_list)} modelos candidatos.")
 
-        # Check if all models are in cooldown
+        # Circuit breaker: skip recently failed models with exponential backoff
         available_models = [
-            m for m in model_list 
-            if f"{m['provider']}/{m['id']}" not in self._cooldowns or __import__('time').time() >= self._cooldowns[f"{m['provider']}/{m['id']}"]
+            m for m in model_list
+            if self._is_available(f"{m['provider']}/{m['id']}")
         ]
-        
+
         if not available_models and model_list:
-            log.warning("[!] Todos los modelos están en cooldown (sync). Forzando reintento.")
-            available_models = model_list[:10]
+            log.warning("[!] Todos los modelos están en cooldown (sync). Forzando reintento con prioridad de velocidad.")
+            from .config import PROVIDER_SPEED_PRIORITY
+            p_map = {p: i for i, p in enumerate(PROVIDER_SPEED_PRIORITY)}
+            model_list_sorted = sorted(model_list, key=lambda m: p_map.get(m.get("provider", "").lower(), 99))
+            available_models = model_list_sorted[:10]
 
         for model_info in available_models:
             provider_name = model_info["provider"]
@@ -830,6 +889,9 @@ class AIRouter:
                 continue
             if has_files and FILE not in capabilities and FILE_SHIM not in capabilities:
                 continue
+
+            start_time = time.time()
+            circuit_key = self._circuit_key(provider_name, model_id)
 
             try:
                 p_cfg = PROVIDERS.get(provider_name)
@@ -871,28 +933,23 @@ class AIRouter:
                                 mem_user_prompt += f"\n\n[CONTEXTO ADJUNTO GUARDADO EN MEMORIA]:\n{f_ctx}"
                         memory.save_message("user", mem_user_prompt)
                         memory.save_message("assistant", res)
+                    self._mark_success(circuit_key, (time.time() - start_time) * 1000)
                     return (res, provider_name, model_id) if return_metadata else res
 
             except Exception as e:
                 err_msg = str(e).lower()
-                # Rate Limits and Overload
+                ck = self._circuit_key(provider_name, model_id)
                 if any(x in err_msg for x in ["429", "rate limit", "insufficient_quota", "overloaded"]):
-                    log.info(f"[LIMIT] {provider_name}/{model_id}. Silenciando por 5 min.")
-                    self._cooldowns[f"{provider_name}/{model_id}"] = __import__('time').time() + 300
-                # Insufficient Credits or Forbidden (402, 403)
+                    self._mark_failure(ck, "rate_limit")
                 elif any(x in err_msg for x in ["402", "403", "insufficient credits", "credit balance"]):
-                    log.info(f"[AUTH/CREDIT] {provider_name}/{model_id} sin saldo o acceso. Silenciando por 1 hora.")
-                    self._cooldowns[f"{provider_name}/{model_id}"] = __import__('time').time() + 3600
-                # Model Not Found (404)
+                    self._mark_failure(ck, "auth/credit")
                 elif "404" in err_msg or "not found" in err_msg:
-                    log.info(f"[MISSING] {provider_name}/{model_id} no encontrado. Silenciando por 1 hora.")
-                    self._cooldowns[f"{provider_name}/{model_id}"] = __import__('time').time() + 3600
-                # Payload Too Large or Too Many Images
+                    self._mark_failure(ck, "not_found")
                 elif any(x in err_msg for x in ["413", "too large", "too many images"]):
-                    log.info(f"[SIZE] {provider_name}/{model_id} rechazó el tamaño. Silenciando por 5 min.")
-                    self._cooldowns[f"{provider_name}/{model_id}"] = __import__('time').time() + 300
+                    self._mark_failure(ck, "payload_too_large")
                 else:
                     log.warning(f"[ERR] {provider_name}/{model_id}: {e}")
+                    self._mark_failure(ck, f"unexpected: {type(e).__name__}")
                 continue
 
         err_res = "ERROR: Agotados todos los modelos. Verifica tus API keys y conexion."
@@ -905,7 +962,7 @@ class AIRouter:
     def _call_openai_style(self, provider, model, base_url, api_key,
                            system_prompt, user_prompt, images, history, 
                            stream=False, tools=None, tool_choice=None):
-        client = OpenAI(base_url=base_url, api_key=api_key, timeout=60.0)
+        client = OpenAI(base_url=base_url, api_key=api_key, timeout=15.0)
         # For strict providers (like NVIDIA), if no images are present, send content as string
         if not images:
             user_msg_content = user_prompt

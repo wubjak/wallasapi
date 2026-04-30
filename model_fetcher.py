@@ -176,15 +176,41 @@ def _determine_capabilities(model_id: str, provider: str) -> List[str]:
 
 def _add_free_flag(caps: list, mid: str, provider: str):
     """Adds the FREE flag based on provider or model name."""
-    free_providers = {"groq", "sambanova", "cerebras", "github", "ollama"}
+    mid_lower = mid.lower()
+
+    # Providers where ALL chat models are free (rate-limited tiers)
+    free_providers = {"groq", "sambanova", "cerebras", "github", "ollama", "huggingface", "pollinations"}
     if provider in free_providers:
         caps.append(FREE)
-    elif ":free" in mid or "free" in mid:
+        return
+
+    # OpenRouter: ONLY :free suffix models are actually free
+    if provider == "openrouter":
+        if ":free" in mid_lower:
+            caps.append(FREE)
+        return
+
+    # NVIDIA: Almost all NIMs have a free tier
+    if provider == "nvidia":
         caps.append(FREE)
-    elif provider == "gemini" and any(x in mid for x in ["flash", "lite", "gemma"]):
+        return
+
+    # Gemini: Flash/Lite are free, Pro also has generous free tier (1500 req/day)
+    if provider == "gemini":
+        if any(x in mid_lower for x in ["flash", "lite", "gemma", "pro", "nano"]):
+            caps.append(FREE)
+        return
+
+    # Mistral: Small, Medium, and Pixtral have free tiers. Large/Codestral are paid.
+    if provider == "mistral":
+        if any(x in mid_lower for x in ["small", "medium", "pixtral"]):
+            caps.append(FREE)
+        return
+
+    # Cohere: All models have a generous trial/free tier via compat API
+    if provider == "cohere":
         caps.append(FREE)
-    elif provider == "nvidia":
-        caps.append(FREE)
+        return
 
 
 def _extract_metadata(model_id: str) -> Dict[str, Any]:
