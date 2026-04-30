@@ -5,6 +5,7 @@ Routes requests to the best available model across multiple providers,
 with automatic fallback, multimodal support, and streaming.
 """
 import os
+import time
 import base64
 import subprocess
 import glob
