@@ -73,9 +73,14 @@ class AIRouter:
     multimodal support, and automatic audio detection.
     """
 
+    MAX_CANDIDATES = 25
+    STICKY_TTL_SECONDS = 300
+    REQUEST_TIMEOUT_SECONDS = 8.0
+
     def __init__(self):
         self.clients: Dict[str, Any] = {}
         self._circuit: Dict[str, Dict[str, Any]] = {}  # "provider/model" -> {failed_at, fail_count, success_count, avg_latency_ms, last_error}
+        self._last_success_cache: Dict[str, Tuple[str, str, float]] = {}  # thread_id -> (provider, model, timestamp)
 
     # --- Circuit Breaker helpers ---
 
@@ -103,7 +108,7 @@ class AIRouter:
         state["last_error"] = reason
         log.info(f"[CIRCUIT] {key} falló ({reason}). Cooldown activado. Fallos consecutivos: {state['fail_count']}")
 
-    def _mark_success(self, key: str, latency_ms: float) -> None:
+    def _mark_success(self, key: str, latency_ms: float, thread_id: str = None) -> None:
         state = self._circuit.setdefault(key, {"fail_count": 0, "success_count": 0, "avg_latency_ms": 0.0})
         state["success_count"] = state.get("success_count", 0) + 1
         state["fail_count"] = 0
@@ -111,6 +116,9 @@ class AIRouter:
         alpha = 0.3
         prev = state.get("avg_latency_ms", 0.0)
         state["avg_latency_ms"] = alpha * latency_ms + (1 - alpha) * prev if prev > 0 else latency_ms
+        if thread_id:
+            provider, model = key.split("/", 1)
+            self._last_success_cache[thread_id] = (provider, model, time.time())
 
     def get_circuit_stats(self) -> Dict[str, Any]:
         return {
@@ -128,6 +136,43 @@ class AIRouter:
             ],
             "timestamp": time.time(),
         }
+
+    def _sort_candidates(self, candidates: List[Dict[str, Any]], thread_id: str = None) -> List[Dict[str, Any]]:
+        """
+        Smart sort: sticky routing (last success for this thread) + EMA latency.
+        Returns candidates with fastest/known-good models first.
+        """
+        if not candidates:
+            return candidates
+
+        sticky = None
+        if thread_id and thread_id in self._last_success_cache:
+            provider, model, ts = self._last_success_cache[thread_id]
+            if time.time() - ts < self.STICKY_TTL_SECONDS:
+                for i, c in enumerate(candidates):
+                    if c.get("provider") == provider and c.get("id") == model and self._is_available(f"{provider}/{model}"):
+                        sticky = candidates.pop(i)
+                        break
+
+        def _latency_key(m):
+            key = f"{m['provider']}/{m['id']}"
+            state = self._circuit.get(key)
+            if state:
+                # Lower EMA latency = higher priority (sort ascending)
+                # Models with 0 latency (unknown) get a moderate penalty so tried models rank better
+                ema = state.get("avg_latency_ms", 0.0)
+                if ema > 0:
+                    return ema
+            # Unknown latency: deprioritize slightly behind known fast models
+            return 99999.0
+
+        candidates.sort(key=_latency_key)
+
+        if sticky:
+            log.info(f"[ROUTER] Sticky routing: reintentando último éxito {sticky['provider']}/{sticky['id']} para thread {thread_id}")
+            candidates.insert(0, sticky)
+
+        return candidates
 
     def get_embeddings(self, texts: List[str], model: str = "text-embedding-3-small") -> List[List[float]]:
         """
@@ -690,6 +735,12 @@ class AIRouter:
             model_list_sorted = sorted(model_list, key=lambda m: p_map.get(m.get("provider", "").lower(), 99))
             available_models = model_list_sorted[:10]
 
+        # --- SMART SORT: sticky routing + EMA latency + cap candidates ---
+        available_models = self._sort_candidates(available_models, thread_id)
+        if len(available_models) > self.MAX_CANDIDATES:
+            log.info(f"[ROUTER] Capando candidatos de {len(available_models)} a {self.MAX_CANDIDATES} (sticky + EMA sort).")
+            available_models = available_models[:self.MAX_CANDIDATES]
+
         for model_info in available_models:
             provider_name = model_info["provider"]
             model_id = model_info["id"]
@@ -801,7 +852,7 @@ class AIRouter:
                     mem.save_message("user", mem_user_prompt)
                     mem.save_message("assistant", full_response)
 
-                self._mark_success(circuit_key, (time.time() - start_time) * 1000)
+                self._mark_success(circuit_key, (time.time() - start_time) * 1000, thread_id)
                 return  # Success
 
             except Exception as e:
@@ -879,6 +930,12 @@ class AIRouter:
             model_list_sorted = sorted(model_list, key=lambda m: p_map.get(m.get("provider", "").lower(), 99))
             available_models = model_list_sorted[:10]
 
+        # --- SMART SORT: sticky routing + EMA latency + cap candidates ---
+        available_models = self._sort_candidates(available_models, thread_id)
+        if len(available_models) > self.MAX_CANDIDATES:
+            log.info(f"[ROUTER] Capando candidatos de {len(available_models)} a {self.MAX_CANDIDATES} (sticky + EMA sort).")
+            available_models = available_models[:self.MAX_CANDIDATES]
+
         for model_info in available_models:
             provider_name = model_info["provider"]
             model_id = model_info["id"]
@@ -934,7 +991,7 @@ class AIRouter:
                                 mem_user_prompt += f"\n\n[CONTEXTO ADJUNTO GUARDADO EN MEMORIA]:\n{f_ctx}"
                         memory.save_message("user", mem_user_prompt)
                         memory.save_message("assistant", res)
-                    self._mark_success(circuit_key, (time.time() - start_time) * 1000)
+                    self._mark_success(circuit_key, (time.time() - start_time) * 1000, thread_id)
                     return (res, provider_name, model_id) if return_metadata else res
 
             except Exception as e:
@@ -963,7 +1020,7 @@ class AIRouter:
     def _call_openai_style(self, provider, model, base_url, api_key,
                            system_prompt, user_prompt, images, history, 
                            stream=False, tools=None, tool_choice=None):
-        client = OpenAI(base_url=base_url, api_key=api_key, timeout=15.0)
+        client = OpenAI(base_url=base_url, api_key=api_key, timeout=self.REQUEST_TIMEOUT_SECONDS)
         # For strict providers (like NVIDIA), if no images are present, send content as string
         if not images:
             user_msg_content = user_prompt
