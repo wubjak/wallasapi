@@ -2,7 +2,7 @@
 chcp 65001 >nul
 title WallasAPI - Enrutador Inteligente de IA
 
-setlocal EnableDelayedExpansion
+setlocal
 
 REM --- Helper: verificar si un comando existe ---
 :check_command
@@ -126,12 +126,29 @@ echo.
 echo Presiona Ctrl+C para detener el servidor.
 echo.
 
-python -m wallasAPI.api_server
+echo [INFO] Iniciando WallasAPI...
+python api_server.py
+if errorlevel 1 goto :FALLBACK
 
-if errorlevel 1 (
-    echo.
-    echo [WARN] Fallo ejecucion como modulo. Intentando ejecucion directa...
-    python api_server.py
-)
+:END
+echo.
+echo [INFO] Servidor detenido. Presiona cualquier tecla para cerrar...
+pause >nul
+exit /b 0
 
-pause
+:FALLBACK
+echo.
+echo [WARN] Fallo ejecucion directa ^(codigo %ERRORLEVEL%^).
+echo.
+echo Posibles causas:
+echo   1. Puerto 8001 ocupado ^(otra instancia de WallasAPI corriendo^)
+echo   2. Error de importacion en el codigo Python
+echo   3. Variables de entorno faltantes
+echo.
+echo Solucion rapida:
+echo   taskkill /F /IM python.exe
+echo   Luego corre este archivo de nuevo.
+echo.
+echo Presiona cualquier tecla para cerrar...
+pause >nul
+goto :END
