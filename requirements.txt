@@ -25,5 +25,9 @@ pytz>=2024.1
 # Web Search
 duckduckgo-search>=6.0.0
 
-# Async HTTP (for model fetching)
+# Async HTTP (for model fetching + MCP)
 aiohttp>=3.9.0
+httpx>=0.27.0
+
+# MCP Server (Model Context Protocol) for Gravedad / Claude Desktop
+mcp>=1.0.0

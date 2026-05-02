@@ -150,3 +150,55 @@ tail -f wallasapi.log
 3. **Deploy a VPS** — usa Caddy o nginx como reverse proxy con HTTPS
 4. **Métricas con Prometheus** — exporta `/v1/stats` a Grafana
 5. **Skills custom** — agrega skills específicos de Sparki en `~/.openclaw/workspace/skills/`
+
+## MCP Server (Model Context Protocol) — Gravedad / Claude Desktop
+
+WallasAPI expone todas sus capacidades como **tools MCP** para cualquier cliente compatible (Claude Desktop, Gravedad, Cursor, etc.).
+
+### Tools MCP disponibles
+
+| Tool | Qué hace |
+|---|---|
+| `wallas_web_search` | Búsqueda web dual backend (DuckDuckGo → Google CSE → SerpAPI) |
+| `wallas_fork_completion` | Ejecuta la misma pregunta en 3 modelos en paralelo, devuelve el mejor |
+| `wallas_diligence_compare` | Compara APIs para una tarea específica, devuelve ranking |
+| `wallas_browser_browse` | Abre URL en camofox stealth y devuelve contenido limpio |
+| `wallas_browser_search` | Busca con macros (@google_search) y extrae top resultados |
+| `wallas_browser_youtube` | Extrae transcript de YouTube |
+| `wallas_get_models` | Lista todos los modelos disponibles |
+| `wallas_get_stats` | Estado de providers, latencias, circuit breaker |
+
+### Configurar en Gravedad / Claude Desktop
+
+1. Copia `mcp_config.json` a la config de tu cliente MCP.
+2. Asegúrate de que WallasAPI esté corriendo en `localhost:8001`.
+
+Ejemplo para Claude Desktop (`claude_desktop_config.json` en Windows):
+
+```json
+{
+  "mcpServers": {
+    "wallasapi": {
+      "command": "python",
+      "args": ["D:/ProyectoIG/wallasAPI/mcp_server.py"]
+    }
+  }
+}
+```
+
+Para Gravedad (si soporta MCP nativo), apunta al mismo `mcp_server.py`.
+
+### Iniciar MCP Server manualmente (stdio)
+
+```bash
+cd /ruta/a/wallasapi
+python mcp_server.py
+```
+
+### Modo HTTP/SSE (para clientes remotos)
+
+```bash
+python mcp_server.py --http --port 8002
+```
+
+Luego conecta Gravedad a `http://localhost:8002/sse`.

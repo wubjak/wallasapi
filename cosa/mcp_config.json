@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "wallasapi": {
+      "command": "python",
+      "args": [
+        "D:/ProyectoIG/wallasAPI/mcp_server.py"
+      ],
+      "env": {
+        "WALLASAPI_URL": "http://localhost:8001",
+        "WALLASAPI_KEY": "wallasapi-local"
+      }
+    }
+  }
+}
