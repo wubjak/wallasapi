@@ -89,12 +89,12 @@ Every feature here was built because **I needed it to ship products without a bu
 | **Pollinations** | Flux, SDXL image gen | **Free** |
 | **Ollama** | Local Llama, Mistral, Qwen, DeepSeek | **Free** |
 | **HuggingFace** | Community models, Spaces video | Mixed |
-| **Cohere** | Command R, Command R+ | Paid |
-| **Mistral AI** | Mistral Large, Medium, Pixtral | Paid |
-| **NVIDIA NIM** | GPU-optimized enterprise LLMs | Paid |
-| **OpenAI** | GPT-4o, GPT-4.1, DALL-E, Whisper, embeddings, TTS | Paid |
+| **Cohere** | Command R, Command R+ | **Free** (trial/compatibility tier) |
+| **Mistral AI** | Mistral Large, Medium, Pixtral | **Free** (small/medium/pixtral) |
+| **NVIDIA NIM** | GPU-optimized enterprise LLMs | **Free** (developer tier) |
+| **OpenAI** | GPT-4o, GPT-4.1, DALL-E, Whisper, embeddings, TTS | **Mixed** (free via GitHub Models, paid direct) |
 
-**With just Gemini + Groq + GitHub Models (all free) you have access to dozens of state-of-the-art models without paying a cent.**
+**With just the free tiers across these 12 providers, you have access to 600+ state-of-the-art models without paying a cent. WallasAPI automatically filters which specific models are free via the `FREE` capability flag.**
 
 ---
 
