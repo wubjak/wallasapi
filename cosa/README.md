@@ -16,14 +16,14 @@ Tu Telegram → OpenClaw Gateway (localhost:18789) → WallasAPI (localhost:8001
 
 ## Archivos en este paquete
 
-| Archivo | Dónde va | Qué hace |
-|---|---|---|
-| `streaming.py` | `wallasapi/services/streaming.py` | Streaming async con circuit breaker y métricas |
-| `api_server.py` | Raíz de wallasapi (reemplaza el actual) | FastAPI + cache + rate limit |
-| `openclaw.json` | `~/.openclaw/openclaw.json` | Config de OpenClaw |
-| `SKILL.md` | `~/.openclaw/workspace/skills/wallasapi/SKILL.md` | Instrucciones del agente |
-| `.env.example` | Raíz de wallasapi → copiar a `.env` | API keys |
-| `start.sh` | Donde quieras | Inicia todo de un comando |
+| Archivo | Dónde va | Qué hace | Nota |
+|---|---|---|---|
+| `openclaw.json` | `~/.openclaw/openclaw.json` | Config de OpenClaw | **Copiar y editar token** |
+| `SKILL.md` | `~/.openclaw/workspace/skills/wallasapi/SKILL.md` | Instrucciones del agente | **Copiar** — ya incluye fork, web search, diligence |
+| `.env.example` | Raíz de wallasapi → copiar a `.env` | API keys | **Copiar y completar** — ahora incluye keys para web search |
+| `start.sh` | Donde quieras | Inicia todo de un comando | **Opcional** — referencia para WSL/Linux |
+
+> **Nota importante:** `api_server.py` y `streaming.py` en la raíz de wallasAPI **ya incluyen** circuit breaker, fork mode, web search dual backend, diligence compare y sticky routing. **No reemplaces el api_server.py actual** — ya es la versión más completa.
 
 ## Setup paso a paso
 
