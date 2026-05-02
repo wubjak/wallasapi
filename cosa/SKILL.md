@@ -95,6 +95,23 @@ Si el sistema tiene acceso a MCP servers, estos tools están disponibles vía `m
 
 > **Nota:** Estos tools solo funcionan si WallasAPI (`localhost:8001`) y el MCP server (`mcp_server.py`) están corriendo. Si no están disponibles, usa los endpoints HTTP directamente.
 
+## MCP Tools disponibles (si Gravedad/OpenClaw soporta MCP)
+
+Si el sistema tiene acceso a MCP servers, estos tools están disponibles vía `mcp_server.py`:
+
+| Tool | Cuándo usar |
+|---|---|
+| `wallas_web_search` | Datos actuales: precios, noticias, eventos recientes |
+| `wallas_fork_completion` | Respuesta crítica: ejecuta 3 modelos en paralelo, devuelve el mejor |
+| `wallas_diligence_compare` | Comparar qué API responde mejor a una tarea específica |
+| `wallas_browser_browse` | Leer una URL compleja (paywall, JS pesado) vía camofox |
+| `wallas_browser_search` | Buscar en Google/Amazon/Reddit y extraer resultados como texto |
+| `wallas_browser_youtube` | Extraer transcript de un video de YouTube |
+| `wallas_get_models` | Ver qué modelos hay disponibles ahora mismo |
+| `wallas_get_stats` | Diagnosticar por qué está lento o fallando |
+
+> **Nota:** Estos tools solo funcionan si WallasAPI (`localhost:8001`) y el MCP server (`mcp_server.py`) están corriendo. Si no están disponibles, usa los endpoints HTTP directamente.
+
 ## No hagas esto
 - No empieces con "Claro!", "Por supuesto!", "Excelente pregunta!"
 - No termines con "¿Algo más en lo que pueda ayudarte?"

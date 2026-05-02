@@ -151,6 +151,46 @@ tail -f wallasapi.log
 4. **Métricas con Prometheus** — exporta `/v1/stats` a Grafana
 5. **Skills custom** — agrega skills específicos de Sparki en `~/.openclaw/workspace/skills/`
 
+## Conectar con Willaku CENTER (AI Proxy Router)
+
+Para que Willaku CENTER use WallasAPI en vez de solo NVIDIA NIMs:
+
+### 1. Configurar AI Proxy Router URL
+
+En Willaku CENTER → **INFRAESTRUCTURA** → **AI Proxy Router**:
+
+```
+URL: http://localhost:8001/v1
+```
+
+Si WallasAPI corre en otra máquina, usa la IP correspondiente.
+
+### 2. Modelos disponibles automáticamente
+
+Cuando conectes WallasAPI, Willaku verá estos modelos **primero en la lista** (modelos virtuales):
+
+| Modelo | Para qué sirve |
+|---|---|
+| `auto` | Selecciona automáticamente el mejor modelo disponible según carga y latencia |
+| `rapido` | Prioriza velocidad (Cerebras, Groq, NVIDIA NIMs) |
+| `standard` | Balance velocidad/calidad (Groq, Sambanova, Gemini Flash) |
+| `razonamiento` | Tareas complejas con chain-of-thought (DeepSeek, Gemini Pro, o3-mini) |
+
+Después aparecen los **600+ modelos reales** de todos los providers conectados.
+
+### 3. Filtro de modelos gratis
+
+Los modelos marcados con `pricing_tier: "free"` aparecen con tag "Gratis" en Willaku. Esto incluye:
+- GitHub Models (gratis)
+- Groq (gratis)
+- Sambanova (gratis)
+- Cerebras (gratis)
+- NVIDIA NIMs (gratis)
+- Mistral small/pixtral (gratis)
+- Gemini Flash/Lite (free tier)
+- HuggingFace Inference API (gratis)
+- Ollama (local = gratis)
+
 ## MCP Server (Model Context Protocol) — Gravedad / Claude Desktop
 
 WallasAPI expone todas sus capacidades como **tools MCP** para cualquier cliente compatible (Claude Desktop, Gravedad, Cursor, etc.).
