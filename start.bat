@@ -2,7 +2,7 @@
 chcp 65001 >nul
 title WallasAPI - Enrutador Inteligente de IA
 
-setlocal
+setlocal EnableDelayedExpansion
 
 REM --- Helper: verificar si un comando existe ---
 :check_command
@@ -24,6 +24,7 @@ set "SCRIPT_DIR=%~dp0"
 set "PARENT_DIR=%SCRIPT_DIR%..\"
 set "VENV_LOCAL=%SCRIPT_DIR%.venv"
 set "VENV_PARENT=%PARENT_DIR%venv"
+set "VENV_PATH="
 
 if exist "%VENV_PARENT%\Scripts\activate.bat" (
     set "VENV_PATH=%VENV_PARENT%"
@@ -33,29 +34,29 @@ if exist "%VENV_PARENT%\Scripts\activate.bat" (
         set "VENV_PATH=%VENV_LOCAL%"
         echo [INFO] Usando entorno virtual local: %VENV_LOCAL%
     ) else (
-        echo [ERROR] No se encontro entorno virtual.
-        echo [ERROR] Esperado en: %VENV_PARENT% o %VENV_LOCAL%
+        echo [WARN] No se encontro entorno virtual en las rutas esperadas.
+        echo [WARN] Intentando usar Python del sistema...
+    )
+)
+
+REM --- Activar venv si existe ---
+if defined VENV_PATH (
+    call "%VENV_PATH%\Scripts\activate.bat"
+    if errorlevel 1 (
+        echo [ERROR] No se pudo activar el entorno virtual.
         pause
         exit /b 1
     )
 )
 
-REM --- Activar venv ---
-call "%VENV_PATH%\Scripts\activate.bat"
-if errorlevel 1 (
-    echo [ERROR] No se pudo activar el entorno virtual.
-    pause
-    exit /b 1
-)
-
-REM --- Verificar Python del venv ---
+REM --- Verificar Python ---
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Python no esta disponible en el entorno virtual.
+    echo [ERROR] Python no esta disponible. Instala Python o crea un venv.
     pause
     exit /b 1
 )
-echo [OK] Python activo: 
+echo [OK] Python activo:
 python --version
 
 REM --- Instalar dependencias ---
@@ -144,10 +145,15 @@ echo Posibles causas:
 echo   1. Puerto 8001 ocupado ^(otra instancia de WallasAPI corriendo^)
 echo   2. Error de importacion en el codigo Python
 echo   3. Variables de entorno faltantes
+echo   4. No se encontro entorno virtual ni Python del sistema
 echo.
 echo Solucion rapida:
 echo   taskkill /F /IM python.exe
 echo   Luego corre este archivo de nuevo.
+echo.
+echo Para diagnosticar, abre CMD y corre manualmente:
+echo   cd /d %SCRIPT_DIR%
+echo   python api_server.py
 echo.
 echo Presiona cualquier tecla para cerrar...
 pause >nul
