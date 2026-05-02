@@ -39,6 +39,7 @@ if os.path.isdir(_WALLAS_ORIGINAL) and os.path.isfile(os.path.join(_WALLAS_ORIGI
     from wallasAPI.config import MODELS_REGISTRY, PROVIDERS, PROVIDER_METADATA, PROXY_API_KEY_ENV
     from wallasAPI.model_fetcher import update_registry_async, load_registry_from_cache
     from wallasAPI.search_engine import get_search_engine
+    from wallasAPI.browser_engine import get_browser_client
     from wallasAPI.logger import log
     _HAS_ORIGINAL = True
 else:
@@ -198,6 +199,34 @@ class DiligenceCompareRequest(BaseModel):
     system_prompt: Optional[str] = "Eres un asistente experto."
     max_parallel: Optional[int] = 3
     criteria: Optional[str] = "calidad"  # calidad, velocidad, costo
+
+
+class BrowserOpenRequest(BaseModel):
+    url: str
+    user_id: Optional[str] = "wallasapi_default"
+    session_key: Optional[str] = None
+
+
+class BrowserActRequest(BaseModel):
+    tab_id: str
+    action: str  # snapshot, click, type, scroll, press, screenshot, links, close
+    ref: Optional[str] = None       # for click / type
+    text: Optional[str] = None      # for type
+    key: Optional[str] = None       # for press
+    press_enter: Optional[bool] = False
+    user_id: Optional[str] = "wallasapi_default"
+
+
+class BrowserSearchRequest(BaseModel):
+    query: str
+    macro: Optional[str] = "@google_search"
+    user_id: Optional[str] = "wallasapi_default"
+    max_results_pages: Optional[int] = 3
+
+
+class YouTubeTranscriptRequest(BaseModel):
+    url: str
+    languages: Optional[List[str]] = None
 
 
 # =============================================================================
@@ -906,6 +935,135 @@ async def diligence_compare(request: DiligenceCompareRequest):
 
     except Exception as e:
         log.error(f"[DILIGENCE] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Browser Automation — Camofox Integration (stealth scraping for Telegram/Gravedad)
+# =============================================================================
+
+@app.get("/v1/browser/health")
+async def browser_health():
+    """Verifica si camofox-browser está corriendo."""
+    try:
+        client = get_browser_client()
+        h = await client.health()
+        return h
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/v1/browser/open", dependencies=[Depends(verify_auth)])
+async def browser_open(request: BrowserOpenRequest):
+    """Abre una URL en camofox y devuelve tabId + snapshot inicial."""
+    try:
+        client = get_browser_client()
+        tab = await client.open_tab(request.url, user_id=request.user_id, session_key=request.session_key)
+        tab_id = tab.get("tabId") or tab.get("id")
+        snap = await client.snapshot(tab_id, user_id=request.user_id)
+        return {
+            "status": "ok",
+            "tab_id": tab_id,
+            "url": request.url,
+            "title": snap.get("title", ""),
+            "snapshot": snap.get("snapshot", "")[:6000],
+        }
+    except Exception as e:
+        log.error(f"[BROWSER] open error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/v1/browser/act", dependencies=[Depends(verify_auth)])
+async def browser_act(request: BrowserActRequest):
+    """Ejecuta una acción en un tab existente: snapshot, click, type, scroll, press, screenshot, links, close."""
+    try:
+        client = get_browser_client()
+        action = request.action.lower()
+
+        if action == "snapshot":
+            snap = await client.snapshot(request.tab_id, user_id=request.user_id)
+            return {"status": "ok", "action": action, "snapshot": snap.get("snapshot", "")[:6000], "title": snap.get("title", "")}
+
+        elif action == "click":
+            if not request.ref:
+                raise HTTPException(status_code=400, detail="'ref' required for click")
+            res = await client.click(request.tab_id, ref=request.ref, user_id=request.user_id)
+            return {"status": "ok", "action": action, "result": res}
+
+        elif action == "type":
+            if not request.ref or request.text is None:
+                raise HTTPException(status_code=400, detail="'ref' and 'text' required for type")
+            res = await client.type_text(request.tab_id, ref=request.ref, text=request.text, user_id=request.user_id, press_enter=request.press_enter)
+            return {"status": "ok", "action": action, "result": res}
+
+        elif action == "scroll":
+            res = await client.scroll(request.tab_id, user_id=request.user_id)
+            return {"status": "ok", "action": action, "result": res}
+
+        elif action == "press":
+            if not request.key:
+                raise HTTPException(status_code=400, detail="'key' required for press")
+            res = await client.press_key(request.tab_id, key=request.key, user_id=request.user_id)
+            return {"status": "ok", "action": action, "result": res}
+
+        elif action == "screenshot":
+            res = await client.screenshot(request.tab_id, user_id=request.user_id)
+            return {"status": "ok", "action": action, "result": res}
+
+        elif action == "links":
+            res = await client.links(request.tab_id, user_id=request.user_id)
+            return {"status": "ok", "action": action, "result": res}
+
+        elif action == "close":
+            res = await client.close_tab(request.tab_id, user_id=request.user_id)
+            return {"status": "ok", "action": action, "result": res}
+
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+    except Exception as e:
+        log.error(f"[BROWSER] act error ({request.action}): {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/v1/browser/search", dependencies=[Depends(verify_auth)])
+async def browser_search(request: BrowserSearchRequest):
+    """Ejecuta una búsqueda vía camofox macro (@google_search, @youtube_search, etc.) y extrae snapshots de los top resultados."""
+    try:
+        from wallasAPI.browser_engine import search_and_browse
+        result = await search_and_browse(
+            query=request.query,
+            user_id=request.user_id,
+            macro=request.macro,
+            max_results_pages=request.max_results_pages,
+        )
+        return result
+    except Exception as e:
+        log.error(f"[BROWSER] search error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/v1/browser/summarize", dependencies=[Depends(verify_auth)])
+async def browser_summarize(request: BrowserOpenRequest):
+    """Abre URL, extrae snapshot legible, cierra tab — devuelve contenido listo para pasar al LLM."""
+    try:
+        from wallasAPI.browser_engine import browse_and_summarize
+        result = await browse_and_summarize(request.url, user_id=request.user_id)
+        return result
+    except Exception as e:
+        log.error(f"[BROWSER] summarize error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/v1/browser/youtube/transcript")
+async def browser_youtube_transcript(request: YouTubeTranscriptRequest):
+    """Extrae transcript de YouTube vía camofox (usa yt-dlp si está disponible)."""
+    try:
+        client = get_browser_client()
+        result = await client.youtube_transcript(request.url, languages=request.languages)
+        return result
+    except Exception as e:
+        log.error(f"[BROWSER] youtube transcript error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

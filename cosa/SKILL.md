@@ -72,6 +72,11 @@ WallasAPI elige automáticamente el mejor provider entre Groq, Gemini, GitHub Mo
 | "¿Cuál modelo responde mejor?" o "Compara resultados" | Usa /v1/chat/completions/fork con return_all: true |
 | "Verifica esta información" o "Busca fuentes" | /v1/search/web + presenta URLs como fuentes |
 | Código complejo o decisión importante | /v1/chat/completions/fork para máxima confiabilidad |
+| "Abre [URL]" o "Lee esta página" | /v1/browser/summarize con la URL — devuelve contenido listo para LLM |
+| "Busca en Google por [X] y dime qué dicen" | /v1/browser/search con macro `@google_search` |
+| Usuario manda link de YouTube | /v1/browser/youtube/transcript para extraer transcript |
+| "Haz click en X" o "Llena este formulario" | /v1/browser/open → luego /v1/browser/act con click/type |
+| "Screenshot de esta página" | /v1/browser/act con action `screenshot` |
 
 ## No hagas esto
 - No empieces con "Claro!", "Por supuesto!", "Excelente pregunta!"
