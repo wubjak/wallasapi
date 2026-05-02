@@ -100,7 +100,7 @@ PROVIDERS = {
     },
     "huggingface": {
         "base_url": "https://api-inference.huggingface.co/v1",
-        "env_key": "HUGGINGFACE_TOKEN",
+        "env_key": "HUGGINGFACE_API_KEY",
         "requires_auth": True,
     },
     "nvidia": {
@@ -226,7 +226,7 @@ PROVIDER_METADATA = {
         "supports_reasoning_stream": False,
         "supports_audio_input": False,
         "supports_native_files": False,
-        "pricing": "paid",
+        "pricing": "free",  # Generous trial/free tier via compat API
         "input_modalities": ["text"],
         "output_modalities": ["text"],
     },

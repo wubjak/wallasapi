@@ -18,7 +18,7 @@ from .base import BaseProvider
 
 class HuggingFaceProvider(BaseProvider):
     def __init__(self, api_key: str = None):
-        self.api_key = api_key or os.getenv("HUGGINGFACE_TOKEN")
+        self.api_key = api_key or os.getenv("HUGGINGFACE_API_KEY")
         if HAS_HUGGINGFACE and self.api_key:
             self.client = InferenceClient(api_key=self.api_key)
         else:
@@ -29,7 +29,7 @@ class HuggingFaceProvider(BaseProvider):
         if not HAS_HUGGINGFACE:
             raise RuntimeError("La librería 'huggingface_hub' no está instalada. Ejecuta: pip install huggingface_hub")
         if not self.api_key:
-            raise RuntimeError("Falta HUGGINGFACE_TOKEN en variables de entorno")
+            raise RuntimeError("Falta HUGGINGFACE_API_KEY en variables de entorno")
         
         # Test basic connection with a fast model
         try:

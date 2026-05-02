@@ -1494,9 +1494,9 @@ class AIRouter:
     def _generate_image_huggingface(self, prompt: str, model: str = None) -> Optional[Dict]:
         """Generate image using Hugging Face Inference API."""
         import requests
-        api_key = os.getenv("HUGGINGFACE_TOKEN")
+        api_key = os.getenv("HUGGINGFACE_API_KEY")
         if not api_key:
-            log.warning("[IMGGEN] HUGGINGFACE_TOKEN not set. Attempting without auth (may fail).")
+            log.warning("[IMGGEN] HUGGINGFACE_API_KEY not set. Attempting without auth (may fail).")
             
         try:
             target_model = model or "black-forest-labs/FLUX.1-schnell"
