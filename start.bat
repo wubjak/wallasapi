@@ -69,6 +69,28 @@ if errorlevel 1 (
 )
 echo [OK] Dependencias listas.
 
+REM --- Verificar si puerto 8001 esta ocupado ---
+echo.
+echo [INFO] Verificando si puerto 8001 esta libre...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :8001 ^| findstr LISTENING') do (
+    set PID=%%a
+    echo [WARN] Puerto 8001 ocupado por PID %%a
+    echo [WARN] Probablemente hay otra instancia de WallasAPI corriendo.
+    echo.
+    echo Presiona ENTER para matar el proceso anterior y continuar...
+    echo O cierra esta ventana y deten el otro proceso manualmente.
+    pause >nul
+    echo [INFO] Matando proceso %%a...
+    taskkill /PID %%a /F >nul 2>&1
+    if errorlevel 1 (
+        echo [ERROR] No pude matar el proceso. Corre como administrador o cierralo manualmente.
+        pause
+        exit /b 1
+    )
+    timeout /t 2 /nobreak >nul
+)
+echo [OK] Puerto 8001 libre.
+
 REM --- Configurar PYTHONPATH para que python -m wallasAPI.api_server funcione ---
 REM El package wallasAPI esta en %SCRIPT_DIR%, su padre es %PARENT_DIR%
 set "PYTHONPATH=%PARENT_DIR%;%PYTHONPATH%"
