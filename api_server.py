@@ -354,25 +354,68 @@ VIRTUAL_MODELS = [
 # Health / Status
 # =============================================================================
 
+async def _check_camofox_health() -> dict:
+    """Check if camofox-browser is running."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get("http://localhost:9377/health")
+            if r.status_code == 200:
+                return {"ok": True, "status": "running", "url": "http://localhost:9377"}
+    except Exception:
+        pass
+    return {"ok": False, "status": "offline", "url": "http://localhost:9377"}
+
+
+async def _check_mcp_health() -> dict:
+    """Check if MCP server is running in HTTP mode."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get("http://localhost:8002/sse")
+            if r.status_code in (200, 404):  # 404 means endpoint exists but method wrong
+                return {"ok": True, "status": "running", "url": "http://localhost:8002/sse"}
+    except Exception:
+        pass
+    return {"ok": False, "status": "offline", "url": "http://localhost:8002/sse"}
+
+
 @app.get("/health")
 async def health():
+    camofox = await _check_camofox_health()
+    mcp = await _check_mcp_health()
     return {
         "status": "ok",
-        "version": "4.0.0-openclaw",
+        "version": "4.1.0-openclaw",
         "models_loaded": len(MODELS_REGISTRY),
         "auth_mode": "api_key" if _get_proxy_api_key() else "open",
-        "openclaw_ready": True,
-        "endpoints": {
-            "openai": "/v1/chat/completions",
-            "models": "/v1/models",
-            "anthropic": "/v1/messages",
+        "services": {
+            "wallasapi": {"ok": True, "status": "running", "url": f"http://{HOST}:{PORT}"},
+            "camofox_browser": camofox,
+            "mcp_server": mcp,
         }
+    }
+
+
+@app.get("/v1/status/services")
+async def services_status():
+    """Dashboard: estado de todos los servicios WallasAPI."""
+    camofox = await _check_camofox_health()
+    mcp = await _check_mcp_health()
+    return {
+        "services": {
+            "wallasapi": {"ok": True, "status": "running", "url": f"http://{HOST}:{PORT}", "models_loaded": len(MODELS_REGISTRY)},
+            "camofox_browser": camofox,
+            "mcp_server": mcp,
+        },
+        "version": "4.1.0",
+        "timestamp": time.time(),
     }
 
 
 @app.get("/")
 async def root():
-    return {"service": "WallasAPI-OpenClaw", "docs": "/docs", "version": "4.0.0"}
+    return {"service": "WallasAPI-OpenClaw", "docs": "/docs", "version": "4.1.0"}
 
 
 # =============================================================================

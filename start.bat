@@ -4,6 +4,11 @@ title WallasAPI - Enrutador Inteligente de IA
 
 setlocal EnableDelayedExpansion
 
+REM --- Helper: verificar si un comando existe ---
+:check_command
+    where %1 >nul 2>&1
+    exit /b %errorlevel%
+
 REM --- Banner visual ---
 echo.
 python "%~dp0banner.py" 2>nul
@@ -68,18 +73,33 @@ REM --- Configurar PYTHONPATH para que python -m wallasAPI.api_server funcione -
 REM El package wallasAPI esta en %SCRIPT_DIR%, su padre es %PARENT_DIR%
 set "PYTHONPATH=%PARENT_DIR%;%PYTHONPATH%"
 
+REM --- Iniciar camofox-browser (opcional, en ventana aparte) ---
+call :check_command camofox-browser
+if %ERRORLEVEL% == 0 (
+    echo [INFO] camofox-browser detectado. Iniciando en ventana aparte...
+    start "Camofox Browser" cmd /c "camofox-browser server"
+    timeout /t 3 /nobreak >nul
+) else (
+    echo [INFO] camofox-browser no instalado. Omitiendo. Instalar: npm install -g camofox-browser
+)
+
+REM --- Iniciar MCP Server en modo HTTP (opcional, en ventana aparte) ---
+echo [INFO] MCP Server iniciando en ventana aparte en modo HTTP (puerto 8002)...
+start "WallasAPI MCP Server" cmd /c "cd /d %SCRIPT_DIR% && python mcp_server.py --http --port 8002"
+timeout /t 2 /nobreak >nul
+
 REM --- Iniciar servidor ---
 echo.
 echo ================================================================
 echo   API iniciandose en http://localhost:8001
 echo   Documentacion interactiva: http://localhost:8001/docs
+echo   Dashboard de servicios: http://localhost:8001/v1/status/services
 echo ================================================================
 echo.
-echo   [INFO] Si usas navegacion con camofox-browser:
-echo          Asegurate de que camofox este corriendo en http://localhost:9377
-echo          Instalar: npm install -g camofox-browser
-echo          Iniciar:  camofox-browser server
-echo.
+echo   Servicios auto-detectados por el dashboard:
+echo     - WallasAPI     : http://localhost:8001  (este proceso)
+echo     - Camofox       : http://localhost:9377  (ventana separada)
+echo     - MCP Server    : http://localhost:8002    (ventana separada)
 echo.
 echo Presiona Ctrl+C para detener el servidor.
 echo.
