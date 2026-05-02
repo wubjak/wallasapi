@@ -193,11 +193,17 @@ OPENROUTER_API_KEY=your_key
 | **Gemini** | [ai.google.dev](https://ai.google.dev) → Get API key | 1 min |
 | **Groq** | [console.groq.com](https://console.groq.com) → API Keys | 1 min |
 | **GitHub Models** | [github.com/settings/tokens](https://github.com/settings/tokens) → classic token | 2 min |
-| **OpenRouter** | [openrouter.ai](https://openrouter.ai) → Keys | 1 min |
+| **Sambanova** | [cloud.sambanova.ai](https://cloud.sambanova.ai) → API Keys | 2 min |
 | **Cerebras** | [cloud.cerebras.ai](https://cloud.cerebras.ai) → API Keys | 2 min |
+| **Mistral AI** | [console.mistral.ai](https://console.mistral.ai) → API Keys | 1 min |
+| **NVIDIA NIM** | [build.nvidia.com](https://build.nvidia.com) → API Keys | 2 min |
+| **Cohere** | [cohere.com](https://cohere.com) → Trial/compatibility API key | 1 min |
+| **HuggingFace** | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) → Access Token | 1 min |
+| **Pollinations** | No API key needed — totally free | 0 min |
+| **OpenRouter** | [openrouter.ai](https://openrouter.ai) → Keys (filter `:free` models) | 1 min |
 | **Ollama** | [ollama.com](https://ollama.com) — install + `ollama run llama3.1` | 5 min |
 
-**Total: ~10 minutes to get free access to 50+ state-of-the-art models.**
+**Total: ~15 minutes to get free access to 600+ state-of-the-art models.**
 
 ---
 
