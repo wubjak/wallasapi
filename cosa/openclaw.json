@@ -1,0 +1,53 @@
+{
+  "agent": {
+    "model": "auto",
+    "baseURL": "http://localhost:8001/v1",
+    "apiKey": "wallasapi-local",
+    "maxTokens": 4096,
+    "temperature": 0.7,
+    "stream": true
+  },
+
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "REEMPLAZA_CON_TU_BOT_TOKEN_DE_BOTFATHER",
+      "dmPolicy": "pairing",
+      "allowFrom": [],
+      "rateLimitPerMinute": 20,
+      "thinkingMessage": "✍️ Pensando..."
+    }
+  },
+
+  "tools": {
+    "bash": false,
+    "browser": false,
+    "read": true,
+    "write": false,
+    "edit": false
+  },
+
+  "skills": [
+    "~/.openclaw/workspace/skills/wallasapi"
+  ],
+
+  "memory": {
+    "enabled": true,
+    "backend": "local",
+    "path": "~/.openclaw/memory",
+    "maxMessagesPerConversation": 20
+  },
+
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 18789,
+    "logLevel": "info"
+  },
+
+  "_comments": {
+    "model": "Usa 'auto' — WallasAPI elige el mejor provider disponible automáticamente",
+    "tools": "bash y write deshabilitados por seguridad en Telegram. Actívalos solo si confías en quien te escribe.",
+    "dmPolicy": "'pairing' = solo responde a usuarios que escanearon un código de emparejamiento desde tu PC. Crítico para no exponer tu bot.",
+    "allowFrom": "Lista vacía = cualquiera con pairing puede usarlo. Pon ['@tu_username'] para limitarlo solo a ti."
+  }
+}

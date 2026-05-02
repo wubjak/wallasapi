@@ -1,0 +1,92 @@
+{
+  "github": {
+    "total": 8,
+    "chat": 4,
+    "current_free": 4,
+    "enhanced_free": 4,
+    "missed": [],
+    "false_positives": []
+  },
+  "groq": {
+    "total": 16,
+    "chat": 8,
+    "current_free": 8,
+    "enhanced_free": 8,
+    "missed": [],
+    "false_positives": []
+  },
+  "sambanova": {
+    "total": 8,
+    "chat": 8,
+    "current_free": 8,
+    "enhanced_free": 8,
+    "missed": [],
+    "false_positives": []
+  },
+  "cerebras": {
+    "total": 4,
+    "chat": 4,
+    "current_free": 4,
+    "enhanced_free": 4,
+    "missed": [],
+    "false_positives": []
+  },
+  "nvidia": {
+    "total": 139,
+    "chat": 113,
+    "current_free": 113,
+    "enhanced_free": 113,
+    "missed": [],
+    "false_positives": []
+  },
+  "mistral": {
+    "total": 68,
+    "chat": 57,
+    "current_free": 0,
+    "enhanced_free": 15,
+    "missed": [
+      "mistral-medium-2505",
+      "mistral-medium-2508",
+      "mistral-medium-latest",
+      "mistral-medium",
+      "mistral-small-2603",
+      "mistral-small-latest",
+      "mistral-medium-3-5",
+      "mistral-medium-3.5",
+      "mistral-medium-3",
+      "mistral-medium-2604",
+      "mistral-medium-c21211-r0-75",
+      "pixtral-large-2411",
+      "pixtral-large-latest",
+      "mistral-large-pixtral-2411",
+      "mistral-small-2506"
+    ],
+    "false_positives": []
+  },
+  "openrouter": {
+    "total": 370,
+    "chat": 362,
+    "current_free": 29,
+    "enhanced_free": 28,
+    "missed": [],
+    "false_positives": [
+      "openrouter/free"
+    ]
+  },
+  "gemini": {
+    "total": 38,
+    "chat": 28,
+    "current_free": 20,
+    "enhanced_free": 27,
+    "missed": [
+      "gemini-2.5-pro",
+      "gemini-pro-latest",
+      "gemini-3-pro-preview",
+      "gemini-3.1-pro-preview",
+      "gemini-3-pro-image-preview",
+      "nano-banana-pro-preview",
+      "lyria-3-pro-preview"
+    ],
+    "false_positives": []
+  }
+}

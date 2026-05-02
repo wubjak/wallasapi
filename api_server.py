@@ -38,6 +38,7 @@ if os.path.isdir(_WALLAS_ORIGINAL) and os.path.isfile(os.path.join(_WALLAS_ORIGI
     from wallasAPI.router import AIRouter
     from wallasAPI.config import MODELS_REGISTRY, PROVIDERS, PROVIDER_METADATA, PROXY_API_KEY_ENV
     from wallasAPI.model_fetcher import update_registry_async, load_registry_from_cache
+    from wallasAPI.search_engine import get_search_engine
     from wallasAPI.logger import log
     _HAS_ORIGINAL = True
 else:
@@ -176,6 +177,27 @@ class CompletionRequest(BaseModel):
     max_tokens: Optional[int] = 1024
     temperature: Optional[float] = 0.7
     stream: Optional[bool] = False
+
+
+class WebSearchRequest(BaseModel):
+    query: str
+    max_results: Optional[int] = 10
+    backend: Optional[str] = "auto"  # auto, duckduckgo, google_cse, serpapi
+
+
+class ForkChatRequest(BaseModel):
+    model: str  # virtual model: auto, rapido, standard, razonamiento, or specific
+    messages: List[OpenAI_Message]
+    max_parallel: Optional[int] = 3
+    return_all: Optional[bool] = False
+    web_search: Optional[bool] = False
+
+
+class DiligenceCompareRequest(BaseModel):
+    task: str
+    system_prompt: Optional[str] = "Eres un asistente experto."
+    max_parallel: Optional[int] = 3
+    criteria: Optional[str] = "calidad"  # calidad, velocidad, costo
 
 
 # =============================================================================
@@ -435,6 +457,16 @@ async def chat_completions(request: OpenAI_ChatRequest):
     last_msg = cleaned_messages[-1]
     user_prompt = last_msg["content"] if last_msg["role"] == "user" else ""
     history = cleaned_messages[:-1]
+
+    # Optional web search enrichment (Gravedad ecosystem)
+    use_web_search = getattr(request, 'web_search', False)
+    if use_web_search:
+        try:
+            se = get_search_engine()
+            search_ctx = se.search_and_summarize(user_prompt, router, max_results=8)
+            system_prompt += f"\n\n[CONTEXTO DE BÚSQUEDA WEB ACTIVADO]\n{search_ctx}\n[FIN CONTEXTO WEB]"
+        except Exception as e:
+            log.warning(f"[WEB_SEARCH] Falló para chat completions: {e}")
 
     thread_id = f"oc_{uuid.uuid4().hex[:8]}"
 
@@ -725,6 +757,156 @@ async def capabilities_summary():
         "providers": list({m.get("provider") for m in MODELS_REGISTRY}),
         "virtual_models": [v["id"] for v in VIRTUAL_MODELS],
     }
+
+
+# =============================================================================
+# Web Search — Dos backends (DuckDuckGo + Google CSE / SerpAPI fallback)
+# =============================================================================
+
+@app.post("/v1/search/web")
+async def web_search(request: WebSearchRequest):
+    """Búsqueda web con fallback automático entre backends."""
+    try:
+        se = get_search_engine()
+        result = se.search(request.query, max_results=request.max_results, preferred_backend=request.backend)
+        return result
+    except Exception as e:
+        log.error(f"[SEARCH] Endpoint error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Fork Mode — Ecosistema Gravedad: paralelización multi-provider
+# =============================================================================
+
+@app.post("/v1/chat/completions/fork")
+async def chat_completions_fork(request: ForkChatRequest):
+    """
+    Modo Fork: ejecuta múltiples modelos en paralelo para la MISMA tarea
+    y devuelve el mejor resultado (o todos si return_all=True).
+    """
+    system_prompt, cleaned_messages = _normalize_messages_for_openclaw(request.messages)
+
+    if not cleaned_messages:
+        raise HTTPException(status_code=400, detail="No user/assistant messages provided")
+
+    last_msg = cleaned_messages[-1]
+    user_prompt = last_msg["content"] if last_msg["role"] == "user" else ""
+
+    # Web search opcional
+    if request.web_search:
+        try:
+            se = get_search_engine()
+            search_ctx = se.search_and_summarize(user_prompt, router, max_results=8)
+            system_prompt += f"\n\n[CONTEXTO DE BÚSQUEDA WEB ACTIVADO]\n{search_ctx}\n[FIN CONTEXTO WEB]"
+        except Exception as e:
+            log.warning(f"[WEB_SEARCH] Falló en fork: {e}")
+
+    try:
+        result = router.fork_completion(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            preferred_model=request.model,
+            max_parallel=request.max_parallel,
+            return_all=request.return_all,
+        )
+
+        if request.return_all:
+            return {
+                "object": "fork_results",
+                "model": request.model,
+                "results": result,
+            }
+
+        # Build OpenAI-compatible response from winner
+        others = result.pop("others", [])
+        return {
+            "id": f"chatcmpl-{uuid.uuid4()}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": f"{result['provider']}/{result['model']}",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": result["text"]},
+                "finish_reason": "stop",
+            }],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "fork_metadata": {
+                "winner": {
+                    "provider": result["provider"],
+                    "model": result["model"],
+                    "latency_ms": result["latency_ms"],
+                    "score": result["score"],
+                },
+                "others": [
+                    {"provider": o["provider"], "model": o["model"], "ok": o["ok"], "latency_ms": o["latency_ms"], "score": o["score"]}
+                    for o in others
+                ],
+                "parallel_count": request.max_parallel,
+            }
+        }
+    except Exception as e:
+        log.error(f"[FORK] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Diligence / Compare — Comparar múltiples APIs para una tarea específica
+# =============================================================================
+
+@app.post("/v1/diligence/compare")
+async def diligence_compare(request: DiligenceCompareRequest):
+    """
+    Compara en tiempo real qué API cumple mejor una diligencia (tarea específica).
+    Ejecuta múltiples modelos en paralelo y devuelve comparación detallada.
+    """
+    try:
+        result = router.fork_completion(
+            system_prompt=request.system_prompt,
+            user_prompt=request.task,
+            max_parallel=request.max_parallel,
+            return_all=True,
+        )
+
+        # Build comparison report
+        ok_results = [r for r in result if r["ok"]]
+        fail_results = [r for r in result if not r["ok"]]
+
+        winner = ok_results[0] if ok_results else None
+
+        comparison = {
+            "object": "diligence_comparison",
+            "task": request.task,
+            "criteria": request.criteria,
+            "total_attempted": len(result),
+            "successful": len(ok_results),
+            "failed": len(fail_results),
+            "winner": {
+                "provider": winner["provider"],
+                "model": winner["model"],
+                "latency_ms": winner["latency_ms"],
+                "score": winner["score"],
+                "text_preview": winner["text"][:500] + "..." if len(winner["text"]) > 500 else winner["text"],
+            } if winner else None,
+            "rankings": [
+                {
+                    "rank": i + 1,
+                    "provider": r["provider"],
+                    "model": r["model"],
+                    "ok": r["ok"],
+                    "latency_ms": r["latency_ms"],
+                    "score": r["score"],
+                    "error": r.get("error"),
+                    "text_preview": r["text"][:300] + "..." if len(r.get("text","")) > 300 else r.get("text",""),
+                }
+                for i, r in enumerate(result)
+            ],
+        }
+        return comparison
+
+    except Exception as e:
+        log.error(f"[DILIGENCE] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================

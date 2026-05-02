@@ -9,6 +9,7 @@ import time
 import base64
 import subprocess
 import glob
+import concurrent.futures
 from typing import List, Dict, Any, Optional, Tuple, Union, Generator
 
 from openai import OpenAI
@@ -1012,6 +1013,171 @@ class AIRouter:
 
         err_res = "ERROR: Agotados todos los modelos. Verifica tus API keys y conexion."
         return (err_res, "none", "none") if return_metadata else err_res
+
+    # ========================================================================
+    # Fork / Parallel Mode — Ecosistema Gravedad
+    # ========================================================================
+
+    def _single_completion_call(
+        self,
+        model_info: Dict[str, Any],
+        system_prompt: str,
+        user_prompt: str,
+        images: List[str] = None,
+        files: List[Dict[str, str]] = None,
+        audio: List[Dict[str, str]] = None,
+        history: List[Dict[str, Any]] = None,
+        reasoning: bool = False,
+    ) -> Dict[str, Any]:
+        """Internal helper for fork mode: calls ONE model and returns structured result."""
+        provider_name = model_info["provider"]
+        model_id = model_info["id"]
+        circuit_key = self._circuit_key(provider_name, model_id)
+        start = time.time()
+
+        try:
+            p_cfg = PROVIDERS.get(provider_name)
+            if not p_cfg:
+                return {"provider": provider_name, "model": model_id, "ok": False, "error": "no config", "latency_ms": 0, "text": "", "score": 0}
+
+            api_key = os.getenv(p_cfg["env_key"]) if p_cfg.get("env_key") else None
+            if provider_name != "ollama" and not api_key:
+                return {"provider": provider_name, "model": model_id, "ok": False, "error": "no key", "latency_ms": 0, "text": "", "score": 0}
+
+            enriched_prompt, _ = self._prepare_context(system_prompt, provider_name, files, user_prompt, reasoning)
+
+            res = ""
+            if provider_name in ("github", "groq", "sambanova", "mistral", "openrouter", "cerebras", "cohere", "huggingface", "nvidia"):
+                res = self._call_openai_style(
+                    provider_name, model_id, p_cfg["base_url"], api_key,
+                    enriched_prompt, user_prompt, images, history, stream=False
+                )
+            elif provider_name == "gemini":
+                if not HAS_GEMINI:
+                    return {"provider": provider_name, "model": model_id, "ok": False, "error": "gemini sdk missing", "latency_ms": 0, "text": "", "score": 0}
+                res = self._call_gemini(
+                    model_id, api_key, enriched_prompt, user_prompt,
+                    images, files, audio, history, stream=False
+                )
+            elif provider_name == "ollama":
+                res = self._call_ollama(
+                    model_id, p_cfg["base_url"], enriched_prompt, user_prompt,
+                    images, history
+                )
+
+            latency_ms = (time.time() - start) * 1000
+            if res and not res.startswith("ERROR") and len(res.strip()) > 10:
+                self._mark_success(circuit_key, latency_ms)
+                # Simple quality score: penalize very short, reward moderate length, slight speed bonus
+                text_len = len(res.strip())
+                score = min(text_len, 2000)  # cap length score
+                score += max(0, 500 - latency_ms) * 0.1  # speed bonus up to 500ms
+                return {
+                    "provider": provider_name,
+                    "model": model_id,
+                    "ok": True,
+                    "error": None,
+                    "latency_ms": round(latency_ms, 1),
+                    "text": res,
+                    "score": round(score, 1),
+                }
+            else:
+                return {"provider": provider_name, "model": model_id, "ok": False, "error": "empty or error response", "latency_ms": round(latency_ms, 1), "text": res, "score": 0}
+
+        except Exception as e:
+            latency_ms = (time.time() - start) * 1000
+            self._mark_failure(circuit_key, f"fork_error: {type(e).__name__}")
+            return {"provider": provider_name, "model": model_id, "ok": False, "error": str(e)[:120], "latency_ms": round(latency_ms, 1), "text": "", "score": 0}
+
+    def fork_completion(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        images: List[str] = None,
+        files: List[Dict[str, str]] = None,
+        audio: List[Dict[str, str]] = None,
+        thread_id: str = None,
+        preferred_provider: str = None,
+        preferred_model: str = None,
+        reasoning: bool = False,
+        max_parallel: int = 3,
+        return_all: bool = False,
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        """
+        Modo Fork del ecosistema Gravedad: ejecuta múltiples modelos en paralelo
+        para la MISMA tarea, compara resultados y devuelve el mejor (o todos).
+
+        Args:
+            max_parallel: Cuántos modelos lanzar simultáneamente (diferentes providers)
+            return_all: Si True, devuelve lista con TODOS los resultados ordenados por score
+
+        Returns:
+            Si return_all=False: dict del mejor resultado (campos: provider, model, text, latency_ms, score, others)
+            Si return_all=True: lista de dicts ordenada por score descendente
+        """
+        model_list = self._get_ordered_model_list(
+            preferred_provider, preferred_model, reasoning,
+            prompt_len=len(user_prompt) + len(system_prompt)
+        )
+
+        # Filtrar disponibles y diversificar providers (no repetir mismo provider)
+        available_models = [
+            m for m in model_list
+            if self._is_available(f"{m['provider']}/{m['id']}")
+        ]
+
+        # De-duplicar por provider para máxima diversidad
+        seen_providers = set()
+        diverse_models = []
+        for m in available_models:
+            prov = m["provider"]
+            if prov not in seen_providers:
+                seen_providers.add(prov)
+                diverse_models.append(m)
+        # Si hay poca diversidad, rellenar con otros modelos del mismo provider
+        if len(diverse_models) < max_parallel:
+            for m in available_models:
+                if m not in diverse_models and len(diverse_models) < max_parallel:
+                    diverse_models.append(m)
+
+        candidates = diverse_models[:max_parallel]
+        if not candidates:
+            return {"provider": "none", "model": "none", "text": "ERROR: Sin modelos disponibles para fork.", "score": 0}
+
+        log.info(f"[FORK] Lanzando {len(candidates)} modelos en paralelo: { [m['provider'] + '/' + m['id'] for m in candidates] }")
+
+        results: List[Dict[str, Any]] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(candidates)) as executor:
+            future_to_model = {
+                executor.submit(
+                    self._single_completion_call,
+                    m, system_prompt, user_prompt, images, files, audio, None, reasoning
+                ): m
+                for m in candidates
+            }
+            for future in concurrent.futures.as_completed(future_to_model):
+                result = future.result()
+                results.append(result)
+                status = "OK" if result["ok"] else f"FAIL({result.get('error','')})"
+                log.info(f"[FORK] {result['provider']}/{result['model']}: {status} | {result['latency_ms']}ms | score={result['score']}")
+
+        # Ordenar por score descendente, luego ok primero
+        results.sort(key=lambda r: (r["ok"], r["score"]), reverse=True)
+
+        if return_all:
+            return results
+
+        winner = results[0] if results else {"provider": "none", "model": "none", "text": "", "score": 0}
+        if not winner["ok"] and len(results) > 1:
+            # Si el primero falló, buscar el primer ok
+            for r in results:
+                if r["ok"]:
+                    winner = r
+                    break
+
+        winner["others"] = [r for r in results if r != winner]
+        log.info(f"[FORK] WINNER: {winner['provider']}/{winner['model']} (score={winner['score']}, latency={winner['latency_ms']}ms)")
+        return winner
 
     # ========================================================================
     # Provider Calls
