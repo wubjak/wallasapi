@@ -75,6 +75,12 @@ echo   API iniciandose en http://localhost:8001
 echo   Documentacion interactiva: http://localhost:8001/docs
 echo ================================================================
 echo.
+echo   [INFO] Si usas navegacion con camofox-browser:
+echo          Asegurate de que camofox este corriendo en http://localhost:9377
+echo          Instalar: npm install -g camofox-browser
+echo          Iniciar:  camofox-browser server
+echo.
+echo.
 echo Presiona Ctrl+C para detener el servidor.
 echo.
 
