@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.1.4] — 2026-05-16
+
+Linux quality-of-life: one-click application launcher.
+
+### Added
+
+- **`install-launcher.sh`** — installs a `wallasapi.desktop` entry in
+  `~/.local/share/applications/` so WallasAPI shows up in the Activities
+  / Show Applications menu of GNOME, KDE, XFCE. Launching it opens a
+  terminal that runs `start.sh` and stays open after the server exits.
+  Detects the available terminal emulator (gnome-terminal, konsole,
+  xfce4-terminal, xterm) and picks one automatically. Optionally drops
+  a clickable shortcut on the user's Desktop or Escritorio (auto-trusted
+  via `gio set metadata::trusted true` on modern GNOME).
+- **`stop.sh`** — Linux counterpart to `stop.bat`. Frees port 8001 (or
+  `$WALLAS_PORT`) using `lsof` or `fuser`. Also installed as a "Stop
+  WallasAPI" menu entry by `install-launcher.sh`.
+
+### Changed
+
+- README Linux/macOS section now mentions the launcher as the
+  recommended setup after the first manual run.
+
+---
+
 ## [4.1.3] — 2026-05-16
 
 Bump the default per-provider request timeout from 8 s to 60 s, and make it
@@ -243,6 +268,7 @@ Initial public release as WallasAPI (formerly `ai_services/`).
 
 ---
 
+[4.1.4]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.4
 [4.1.3]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.3
 [4.1.2]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.2
 [4.1.1]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.1

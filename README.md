@@ -135,6 +135,15 @@ pip install -r requirements.txt
 python api_server.py
 ```
 
+**Optional — install a one-click launcher** so WallasAPI shows up in your application menu (Activities → Show Apps) and can be pinned to the dock:
+
+```bash
+cd wallasAPI
+./install-launcher.sh
+```
+
+After this, double-clicking the "WallasAPI" icon (or searching it in Activities) starts the server inside a terminal window — no more remembering to `cd` and activate the venv by hand. A companion "Stop WallasAPI" entry is also installed.
+
 <details>
 <summary>Troubleshooting</summary>
 
