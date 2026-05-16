@@ -76,9 +76,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="WallasAPI-OpenClaw",
-    description="Multi-provider AI router optimized for OpenClaw. OpenAI-compatible gateway.",
-    version="4.0.0-openclaw",
+    title="WallasAPI - Your better and friendly AI router",
+    description="Multi-provider AI router. OpenAI · Anthropic · Ollama-compatible gateway with auto-fallback, streaming, multimodal, and circuit-breaker observability.",
+    version="4.1.0",
     lifespan=lifespan,
 )
 
