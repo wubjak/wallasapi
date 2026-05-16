@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.1.5] — 2026-05-16
+
+`start.sh` now handles pip-less virtual environments correctly.
+
+### Why
+
+`uv venv` (the standard way to create a venv with a non-system Python via
+the modern `uv` toolchain) intentionally **omits pip** for speed —
+users are expected to use `uv pip` instead. When `start.sh` activated
+such a venv and then ran `pip install`, the shell fell back to the
+system pip on PATH, which on PEP-668-protected distros (Debian / Ubuntu
+24.04+) refused with `error: externally-managed-environment`.
+
+### Fixed
+
+- After activating the venv, `start.sh` now probes `python -m pip --version`
+  before assuming pip is available.
+- If pip is missing, it bootstraps via `python -m ensurepip --upgrade`.
+- If `ensurepip` is not available either, falls back to `uv pip` when
+  `uv` is on PATH.
+- If nothing works, prints a clear remediation (`uv venv --seed` to
+  recreate the venv with pip pre-installed).
+- All `pip install` calls now use `python -m pip` explicitly, eliminating
+  any chance of shelling out to the system pip even with a working venv.
+
+This unblocks the common flow:
+```bash
+uv venv --python 3.12 .venv     # no --seed, no pip inside
+./start.sh                      # previously crashed with PEP 668
+```
+
+---
+
 ## [4.1.4] — 2026-05-16
 
 Linux quality-of-life: one-click application launcher.
@@ -268,6 +301,7 @@ Initial public release as WallasAPI (formerly `ai_services/`).
 
 ---
 
+[4.1.5]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.5
 [4.1.4]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.4
 [4.1.3]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.3
 [4.1.2]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.2

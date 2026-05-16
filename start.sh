@@ -60,9 +60,36 @@ fi
 source "${VENV_DIR}/bin/activate"
 
 # --------------------------------------------------------------- dependencies
+# Some venvs (especially those created by `uv venv` without --seed) ship
+# without pip installed. If we naively run `pip install` we'd shell out to
+# the system pip and hit PEP 668 (externally-managed-environment). Detect
+# that and either bootstrap pip via ensurepip or fall back to `uv pip`.
 echo "[INFO] Ensuring dependencies are installed..."
-pip install --quiet --upgrade pip
-pip install --quiet -r "${WALLAS_DIR}/requirements.txt"
+
+INSTALLER=""
+if python -m pip --version >/dev/null 2>&1; then
+  INSTALLER="pip"
+else
+  echo "[INFO] Venv has no pip — bootstrapping via ensurepip..."
+  if python -m ensurepip --upgrade 2>/dev/null; then
+    INSTALLER="pip"
+  elif command -v uv >/dev/null 2>&1; then
+    echo "[INFO] ensurepip not available; using 'uv pip' as installer."
+    INSTALLER="uv"
+  else
+    echo "[ERROR] Venv has neither pip nor ensurepip, and 'uv' is not installed." >&2
+    echo "        Fix: rm -rf '${VENV_DIR}' && uv venv --seed --python 3.12 '${VENV_DIR}'" >&2
+    echo "        Or:  pip install --user --break-system-packages uv" >&2
+    exit 1
+  fi
+fi
+
+if [[ "$INSTALLER" == "pip" ]]; then
+  python -m pip install --quiet --upgrade pip
+  python -m pip install --quiet -r "${WALLAS_DIR}/requirements.txt"
+else
+  uv pip install --quiet -r "${WALLAS_DIR}/requirements.txt"
+fi
 
 # ----------------------------------------------------------- free port 8001
 PORT="${WALLAS_PORT:-8001}"
