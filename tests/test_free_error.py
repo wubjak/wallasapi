@@ -1,10 +1,10 @@
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 try:
-    from ai_services.router import AIRouter
-    from ai_services.config import FREE
+    from wallasAPI.router import AIRouter
+    from wallasAPI.config import FREE
     print(f"FREE value: {FREE}")
     router = AIRouter()
     print("AIRouter instance created successfully.")

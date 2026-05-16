@@ -398,7 +398,10 @@ async def _main_http(port: int = 8002):
 
     import uvicorn
     print(f"[MCP HTTP] WallasAPI MCP Server en http://0.0.0.0:{port}/sse")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    # Usar uvicorn.Server para evitar asyncio.run() dentro de un loop existente
+    config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
+    server = uvicorn.Server(config)
+    await server.serve()
 
 
 if __name__ == "__main__":
@@ -408,6 +411,22 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.http:
-        asyncio.run(_main_http(args.port))
+        try:
+            asyncio.run(_main_http(args.port))
+        except RuntimeError as e:
+            if "asyncio.run() cannot be called from a running event loop" in str(e):
+                import nest_asyncio
+                nest_asyncio.apply()
+                asyncio.get_event_loop().run_until_complete(_main_http(args.port))
+            else:
+                raise
     else:
-        asyncio.run(_main_stdio())
+        try:
+            asyncio.run(_main_stdio())
+        except RuntimeError as e:
+            if "asyncio.run() cannot be called from a running event loop" in str(e):
+                import nest_asyncio
+                nest_asyncio.apply()
+                asyncio.get_event_loop().run_until_complete(_main_stdio())
+            else:
+                raise

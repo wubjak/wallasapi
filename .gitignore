@@ -23,8 +23,24 @@ __pycache__/
 
 # Archivos de datos locales (no codigo fuente)
 models_cache.json
+last_request.json
+free_models_report.json
+reminders.json
+settings.json
+models_raw.json
+models_after_update.txt
+models_final.txt
+tmp_*.json
+manual_install_log.txt
+install_log*.txt
+*.backup.v*
 *.db
 *.sqlite3
+
+# Test debris / debug iteraciones
+test_for*.bat
+diagnose*.py
+_test_*.py
 
 # Logs y archivos temporales
 *.log

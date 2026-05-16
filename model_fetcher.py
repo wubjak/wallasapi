@@ -8,6 +8,7 @@ import os
 import asyncio
 import aiohttp
 import json
+import time
 from typing import List, Dict, Any
 
 from .config import (
@@ -19,6 +20,7 @@ from .config import (
 from .logger import log
 
 MODELS_CACHE_FILE = os.path.join(os.path.dirname(__file__), "models_cache.json")
+MODELS_CACHE_TTL_SECONDS = int(os.getenv("WALLAS_MODELS_CACHE_TTL_SECONDS", "3600"))
 
 # ============================================================================
 # Heuristic Capability Classifier
@@ -558,6 +560,10 @@ def load_registry_from_cache() -> bool:
     if not os.path.exists(MODELS_CACHE_FILE):
         return False
     try:
+        cache_age = max(0, int(time.time() - os.path.getmtime(MODELS_CACHE_FILE)))
+        if MODELS_CACHE_TTL_SECONDS > 0 and cache_age > MODELS_CACHE_TTL_SECONDS:
+            log.info(f"[CACHE] Caché de modelos expirada ({cache_age}s > {MODELS_CACHE_TTL_SECONDS}s). Refrescando.")
+            return False
         with open(MODELS_CACHE_FILE, "r", encoding="utf-8") as f:
             cached_models = json.load(f)
             if cached_models and isinstance(cached_models, list):

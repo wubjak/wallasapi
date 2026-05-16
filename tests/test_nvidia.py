@@ -1,10 +1,15 @@
 import os
+import sys
 import asyncio
 from dotenv import load_dotenv
-load_dotenv('ai_services/.env')
 
-from ai_services.model_fetcher import update_registry_cache
-from ai_services.router import AIRouter
+# Make 'wallasAPI' importable from tests/ (two levels below project root)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+load_dotenv('wallasAPI/.env')
+
+from wallasAPI.model_fetcher import update_registry_cache
+from wallasAPI.router import AIRouter
 
 def test_nvidia():
     print("--- Actualizando Registro ---")

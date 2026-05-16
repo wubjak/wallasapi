@@ -29,26 +29,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 # =============================================================================
-# PATH RESOLUTION: Si estás al lado del wallasAPI original, úsalo.
-# Si no, usa el router embebido (más abajo).
+# Core imports — wallasAPI package
 # =============================================================================
-_WALLAS_ORIGINAL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "wallasAPI")
-if os.path.isdir(_WALLAS_ORIGINAL) and os.path.isfile(os.path.join(_WALLAS_ORIGINAL, "router.py")):
-    sys.path.insert(0, os.path.dirname(_WALLAS_ORIGINAL))
-    from wallasAPI.router import AIRouter
-    from wallasAPI.config import MODELS_REGISTRY, PROVIDERS, PROVIDER_METADATA, PROXY_API_KEY_ENV
-    from wallasAPI.model_fetcher import update_registry_async, load_registry_from_cache
-    from wallasAPI.search_engine import get_search_engine
-    from wallasAPI.browser_engine import get_browser_client
-    from wallasAPI.logger import log
-    _HAS_ORIGINAL = True
-else:
-    _HAS_ORIGINAL = False
-    # Fallback: implementación mínima embebida (solo para demo/standalone)
-    from .router_embedded import AIRouter
-    from .config_embedded import MODELS_REGISTRY, PROVIDERS, PROVIDER_METADATA, PROXY_API_KEY_ENV
-    from .model_fetcher_embedded import update_registry_async, load_registry_from_cache
-    from .logger_embedded import log
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from wallasAPI.router import AIRouter
+from wallasAPI.config import MODELS_REGISTRY, PROVIDERS, PROVIDER_METADATA, PROXY_API_KEY_ENV
+from wallasAPI.model_fetcher import update_registry_async, load_registry_from_cache
+from wallasAPI.search_engine import get_search_engine
+from wallasAPI.browser_engine import get_browser_client
+from wallasAPI.logger import log
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -258,12 +247,12 @@ def _normalize_messages_for_openclaw(messages: List[OpenAI_Message]) -> tuple:
     return system_prompt, cleaned_messages
 
 
-def _build_openai_response(text: str, model_used: str, tools=None, tool_calls=None) -> dict:
+def _build_openai_response(text: str, model_used: str, provider: str = None, tools=None, tool_calls=None) -> dict:
     """Construye respuesta chat.completion exacta OpenAI."""
     msg = {"role": "assistant", "content": text}
     if tool_calls:
         msg["tool_calls"] = tool_calls
-    return {
+    resp = {
         "id": f"chatcmpl-{uuid.uuid4()}",
         "object": "chat.completion",
         "created": int(time.time()),
@@ -280,6 +269,9 @@ def _build_openai_response(text: str, model_used: str, tools=None, tool_calls=No
             "total_tokens": 0,
         },
     }
+    if provider:
+        resp["provider"] = provider
+    return resp
 
 
 # =============================================================================
@@ -351,6 +343,17 @@ VIRTUAL_MODELS = [
 
 
 # =============================================================================
+# Ollama-Compatible Facade (/api/*)
+# =============================================================================
+try:
+    from wallasAPI.ollama_compat import build_ollama_router
+except ImportError:
+    from .ollama_compat import build_ollama_router  # type: ignore
+
+app.include_router(build_ollama_router(router, VIRTUAL_MODELS))
+
+
+# =============================================================================
 # Health / Status
 # =============================================================================
 
@@ -373,7 +376,7 @@ async def _check_mcp_health() -> dict:
         import httpx
         async with httpx.AsyncClient(timeout=3.0) as client:
             r = await client.get("http://localhost:8002/sse")
-            if r.status_code in (200, 404):  # 404 means endpoint exists but method wrong
+            if r.status_code in (200, 404, 405, 422):  # Any response means server is running
                 return {"ok": True, "status": "running", "url": "http://localhost:8002/sse"}
     except Exception:
         pass
@@ -566,7 +569,7 @@ async def chat_completions(request: OpenAI_ChatRequest):
             reasoning=reasoning_mode,
             history=history,
         )
-        return _build_openai_response(res, model_used)
+        return _build_openai_response(res, model_used, provider)
 
 
 # =============================================================================
@@ -672,6 +675,8 @@ async def _openai_stream_generator(system_prompt, user_prompt, preferred_model, 
 
     queue = asyncio.Queue()
     loop = asyncio.get_event_loop()
+    real_model = preferred_model
+    real_provider = None
 
     def run_router():
         try:
@@ -708,6 +713,11 @@ async def _openai_stream_generator(system_prompt, user_prompt, preferred_model, 
 
         chunk_count += 1
         if chunk["type"] == "metadata":
+            # Capture real model and provider from router metadata
+            if chunk.get("model"):
+                real_model = chunk["model"]
+            if chunk.get("provider"):
+                real_provider = chunk["provider"]
             continue
         if chunk["type"] == "shim_notice":
             continue
@@ -717,7 +727,8 @@ async def _openai_stream_generator(system_prompt, user_prompt, preferred_model, 
                 "id": chat_id,
                 "object": "chat.completion.chunk",
                 "created": created_time,
-                "model": preferred_model,
+                "model": real_model,
+                "provider": real_provider,
                 "choices": [{"index": 0, "delta": {"content": chunk["chunk"]}, "finish_reason": None}],
             }
             yield f"data: {json.dumps(data)}\n\n"
@@ -727,7 +738,8 @@ async def _openai_stream_generator(system_prompt, user_prompt, preferred_model, 
                 "id": chat_id,
                 "object": "chat.completion.chunk",
                 "created": created_time,
-                "model": preferred_model,
+                "model": real_model,
+                "provider": real_provider,
                 "choices": [{"index": 0, "delta": {"reasoning_content": chunk["chunk"]}, "finish_reason": None}],
             }
             yield f"data: {json.dumps(data)}\n\n"
@@ -736,7 +748,8 @@ async def _openai_stream_generator(system_prompt, user_prompt, preferred_model, 
         "id": chat_id,
         "object": "chat.completion.chunk",
         "created": created_time,
-        "model": preferred_model,
+        "model": real_model,
+        "provider": real_provider,
         "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
     }
     yield f"data: {json.dumps(final)}\n\n"
@@ -1120,6 +1133,7 @@ if __name__ == "__main__":
     print("  WallasAPI-OpenClaw Edition v4.0")
     print("  Optimizado para OpenClaw / Claude Code / IDEs")
     print(f"  Endpoint OpenAI: http://{HOST}:{PORT}/v1")
+    print(f"  Endpoint Ollama: http://{HOST}:{PORT}/api")
     print(f"  Health Check:    http://{HOST}:{PORT}/health")
     print("=" * 60)
     uvicorn.run(app, host=HOST, port=PORT, log_level="warning" if SILENT_AGENT_LOGS else "info")

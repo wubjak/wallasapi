@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="logos/socialbanner.png" alt="WallasAPI — 12+ AI Providers · 100+ Models · One API" width="100%">
+<img src="logos/socialbanner.png" alt="WallasAPI — 12+ AI Providers · 600+ Models · One API" width="100%">
 
-# One API. 12+ AI Providers. 100+ Models. Zero Vendor Lock-in.
+# One API. 12+ AI Providers. 600+ Models. Zero Vendor Lock-in.
 
 **The unified, OpenAI-compatible router that automatically picks the best AI provider for every request — and falls back transparently when one fails.**
 
@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Providers](https://img.shields.io/badge/Providers-12+-orange.svg?style=for-the-badge)](#supported-providers)
-[![Models](https://img.shields.io/badge/Models-100+-purple.svg?style=for-the-badge)](#supported-providers)
+[![Models](https://img.shields.io/badge/Models-600+-purple.svg?style=for-the-badge)](#supported-providers)
 
 [![Sponsor](https://img.shields.io/badge/💛_Sponsor-Willen_Ponce-ff69b4?style=for-the-badge)](#donations--why-this-matters)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Buy_me_a_coffee-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/wubjak)
@@ -86,6 +86,7 @@ Every feature here was built because **I needed it to ship products without a bu
 | **GitHub Models** | GPT-4o, o1, o3, Mistral, Llama, Cohere | **Free** |
 | **OpenRouter** | Claude, DeepSeek, Qwen + 100 more | Mixed |
 | **Cerebras** | Ultra-fast Llama on proprietary HW | **Free** |
+| **SambaNova** | Fast Llama 3.1/3.2/3.3, DeepSeek, Qwen with vision | **Free** |
 | **Pollinations** | Flux, SDXL image gen | **Free** |
 | **Ollama** | Local Llama, Mistral, Qwen, DeepSeek | **Free** |
 | **HuggingFace** | Community models, Spaces video | Mixed |
@@ -94,7 +95,7 @@ Every feature here was built because **I needed it to ship products without a bu
 | **NVIDIA NIM** | GPU-optimized enterprise LLMs | **Free** (developer tier) |
 | **OpenAI** | GPT-4o, GPT-4.1, DALL-E, Whisper, embeddings, TTS | **Mixed** (free via GitHub Models, paid direct) |
 
-**With just the free tiers across these 12 providers, you have access to 600+ state-of-the-art models without paying a cent. WallasAPI automatically filters which specific models are free via the `FREE` capability flag.**
+**With just the free tiers across these providers, you have access to 600+ state-of-the-art models without paying a cent. WallasAPI automatically filters which specific models are free via the `FREE` capability flag.**
 
 ---
 
@@ -146,9 +147,11 @@ print(response.choices[0].message.content)
 | Virtual model | Strategy |
 |---|---|
 | `auto` | Best available right now |
-| `fast` | Lowest latency (Groq, Cerebras) |
+| `rapido` | Lowest latency (Groq, Cerebras, SambaNova) |
 | `standard` | Quality/speed/cost balance |
-| `reasoning` | Deep thinking (DeepSeek R1, o1, o3, Gemini 2.5 Pro) |
+| `razonamiento` | Deep thinking (DeepSeek R1, o1, o3, Gemini 2.5 Pro) |
+
+**Strategy via header** — instead of overriding `model`, you can keep your existing model and add `X-Willaku-Tier: rapido|standard|razonamiento|auto` to any request. Add `X-Willaku-Web-Search: true` to enrich the prompt with live DuckDuckGo results. See [`DOCUMENTACION_COMPLETA.md`](DOCUMENTACION_COMPLETA.md) for the full header reference.
 
 ---
 
@@ -168,6 +171,54 @@ WallasAPI exclusive:
 - `GET /v1/providers` — provider-level capabilities
 - `POST /v1/ocr/process` — OCR with auto-fallback
 - `POST /v1/sync/obsidian` — sync conversations to your vault
+
+Anthropic-compatible:
+- `POST /v1/messages` — drop-in endpoint for Claude Code, Claude Desktop, and other tools that speak the Anthropic protocol. Internally routed to whichever provider is best for the request.
+
+---
+
+## Advanced Features
+
+Built-in capabilities that go beyond a vanilla OpenAI proxy:
+
+### 🍴 Fork Mode — race N models, return the winner
+
+`POST /v1/chat/completions/fork` runs the same prompt against multiple providers in parallel and returns the best result (or all of them, with `return_all=true`). Each candidate is scored by latency, success, and length. Great for benchmarking or for getting an answer fast when you don't care which provider produces it.
+
+```bash
+curl -X POST http://localhost:8001/v1/chat/completions/fork \
+  -H "Content-Type: application/json" \
+  -d '{"model":"rapido","messages":[{"role":"user","content":"haiku about routing"}],"max_parallel":3}'
+```
+
+### ⚖️ Diligence Compare — head-to-head provider report
+
+`POST /v1/diligence/compare` ranks providers for a specific task, returning latency, score, and a text preview for each. Useful for picking the right provider for a recurring workload.
+
+```bash
+curl -X POST http://localhost:8001/v1/diligence/compare \
+  -d '{"task":"Summarize quantum computing in 2 lines","criteria":"calidad","max_parallel":4}'
+```
+
+### 🌐 Web Search — DuckDuckGo · Google CSE · SerpAPI fallback
+
+`POST /v1/search/web` returns real-time web results from whichever backend is reachable. Combined with `X-Willaku-Web-Search: true` on chat requests, the search context gets injected into the system prompt automatically.
+
+### 🦊 Browser Automation (Camofox)
+
+When the optional `camofox-browser` service is running on `:9377`, WallasAPI exposes stealth scraping endpoints: `POST /v1/browser/open`, `/v1/browser/act`, `/v1/browser/search`, `/v1/browser/summarize`, `/v1/browser/youtube/transcript`. Opens a real browser tab, navigates, clicks, types, and returns a clean snapshot the LLM can consume.
+
+### 📊 Circuit Breaker Observability
+
+`GET /v1/stats` shows every `provider/model` circuit: success count, fail count, EMA latency, current cooldown, last error. Lets you see in real time which providers are flaky and how the router is reacting.
+
+### 🔌 MCP Server (Model Context Protocol)
+
+[`mcp_server.py`](mcp_server.py) exposes WallasAPI as an MCP server for Claude Desktop, Cursor, and Windsurf. Models, search, OCR, and browser tools become first-class MCP capabilities your IDE/agent can call directly. Default port `:8002` (SSE mode).
+
+### 🎯 Service Health Dashboard
+
+`GET /health` reports the status of WallasAPI itself, Camofox, and the MCP server in one call — useful for monitoring or for IDE plugins that want to gracefully degrade when a side-service is offline.
 
 ---
 
@@ -204,6 +255,38 @@ OPENROUTER_API_KEY=your_key
 | **Ollama** | [ollama.com](https://ollama.com) — install + `ollama run llama3.1` | 5 min |
 
 **Total: ~15 minutes to get free access to 600+ state-of-the-art models.**
+
+---
+
+## Ollama Mode (Unified Gateway)
+
+WallasAPI also speaks the **Ollama** protocol on the same port. Point any Ollama client at `http://localhost:8001` and you'll see a unified catalog: WallasAPI cloud models **plus** local models from the real Ollama daemon (if it's running at `localhost:11434`).
+
+Exposed endpoints:
+
+- `GET  /api/version`
+- `GET  /api/tags` — union of cloud models + local Ollama tags
+- `POST /api/show` — per-model metadata
+- `POST /api/generate` — completions (NDJSON streaming)
+- `POST /api/chat` — multi-turn chat (NDJSON streaming)
+
+Environment variables:
+
+- `OLLAMA_UPSTREAM` — URL of the real Ollama daemon (default `http://localhost:11434`). If it doesn't respond, the catalog gracefully falls back to cloud-only.
+- `WALLAS_OLLAMA_VERSION` — string returned by `/api/version` (default `0.1.0-wallas`).
+
+Examples:
+
+```bash
+curl http://localhost:8001/api/tags
+curl http://localhost:8001/api/chat -d '{
+  "model":"gpt-4o-mini",
+  "messages":[{"role":"user","content":"hi in one word"}],
+  "stream":false
+}'
+```
+
+If the requested `model` matches a local Ollama tag, the request is proxied byte-for-byte to the daemon. If it matches a WallasAPI cloud model, it goes through the internal `AIRouter` and the response is translated to Ollama's shape.
 
 ---
 

@@ -109,6 +109,21 @@ class AIRouter:
         state["last_error"] = reason
         log.info(f"[CIRCUIT] {key} falló ({reason}). Cooldown activado. Fallos consecutivos: {state['fail_count']}")
 
+        if reason == "not_found":
+            provider, model_id = key.split("/", 1)
+            before = len(MODELS_REGISTRY)
+            MODELS_REGISTRY[:] = [
+                m for m in MODELS_REGISTRY
+                if not (m.get("provider") == provider and m.get("id") == model_id)
+            ]
+            if len(MODELS_REGISTRY) != before:
+                log.warning(f"[REGISTRY] Modelo removido del runtime por not_found: {key}")
+                try:
+                    from .model_fetcher import save_registry_to_cache
+                    save_registry_to_cache()
+                except Exception as e:
+                    log.warning(f"[REGISTRY] No se pudo persistir remoción de {key}: {e}")
+
     def _mark_success(self, key: str, latency_ms: float, thread_id: str = None) -> None:
         state = self._circuit.setdefault(key, {"fail_count": 0, "success_count": 0, "avg_latency_ms": 0.0})
         state["success_count"] = state.get("success_count", 0) + 1
@@ -365,7 +380,8 @@ class AIRouter:
                 
                 if has_context_risk:
                     priority += 10 # Send to the end of its tier
-            except:
+            except Exception as e:
+                log.warning(f"[ROUTER] sort_key error for {m.get('id', '?')}: {e}")
                 priority = 99
             
             # Use random jitter to rotate between models of same priority
@@ -376,6 +392,12 @@ class AIRouter:
             return chat_models
 
         if preferred_model:
+            # Handle "provider/model" format (e.g. from Gravedad selector)
+            if "/" in preferred_model and preferred_model not in [RAPIDO, STANDARD, RAZONAMIENTO, AUTO]:
+                parts = preferred_model.split("/", 1)
+                if not preferred_provider:
+                    preferred_provider = parts[0]
+                preferred_model = parts[1]
             # 1. Alias resolution (First check if it's a known alias like 'gpt-4o')
             alias_ids = MODEL_ALIASES.get(preferred_model.lower(), [])
             actual_pref = alias_ids[0] if alias_ids else preferred_model
@@ -508,7 +530,7 @@ class AIRouter:
                 system_prompt="Eres un experto en resumir conversaciones.",
                 user_prompt=prompt
             )
-            if "ERROR" in title or len(title) > 100:
+            if title.startswith(("ERROR", "[ERROR", "[Error")) or len(title) > 100:
                 return "Nueva Conversación"
             return title.strip().replace("\"", "").replace("'", "")
         except Exception as e:

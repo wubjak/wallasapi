@@ -6,8 +6,8 @@ import os
 import sys
 import json
 
-# Add parent directory so 'wallasAPI' package resolves
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root so 'wallasAPI' package resolves (tests/ está dos niveles bajo la raíz)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from wallasAPI.model_fetcher import _add_free_flag, _determine_capabilities
 from wallasAPI.config import FREE

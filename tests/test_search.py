@@ -2,8 +2,8 @@
 import os
 import sys
 
-# Asegurar que el directorio raíz está en el path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Asegurar que el directorio raíz del proyecto está en el path (tests/ está dos niveles bajo la raíz)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from wallasAPI.router import AIRouter
 
