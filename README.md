@@ -113,12 +113,50 @@ cd wallasapi
 ### Linux / macOS
 
 ```bash
-git clone https://github.com/wubjak/wallasapi.git
-cd wallasapi
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python -m wallasAPI.api_server
+# Prerequisite (Debian/Ubuntu only — install once):
+#   sudo apt install -y python3 python3-venv python3-pip
+
+# IMPORTANT: clone with the capitalized name so the package import path matches
+# (the codebase imports `wallasAPI` and Linux filesystems are case-sensitive).
+git clone https://github.com/wubjak/wallasapi.git wallasAPI
+cd wallasAPI
+chmod +x start.sh
+./start.sh
 ```
+
+Or manually if you prefer to see each step:
+
+```bash
+git clone https://github.com/wubjak/wallasapi.git wallasAPI
+cd wallasAPI
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python api_server.py
+```
+
+<details>
+<summary>Troubleshooting</summary>
+
+- **`apt install python3.X-venv` fails** — your distro may not yet package the
+  venv module for very new Python versions (e.g. 3.14). Fall back to a stable
+  version: `sudo apt install -y python3.12 python3.12-venv` and use
+  `python3.12 -m venv .venv` instead.
+- **`error: externally-managed-environment` (PEP 668)** — you tried to `pip
+  install` outside a venv. Always activate `.venv` first (`source
+  .venv/bin/activate`) before running `pip install`.
+- **No `sudo` available** — use the modern Python toolchain:
+  ```bash
+  pip install --user --break-system-packages uv
+  uv venv .venv && source .venv/bin/activate
+  uv pip install -r requirements.txt
+  ```
+- **`ModuleNotFoundError: No module named 'wallasAPI'`** — you cloned into a
+  lowercase `wallasapi/` directory. Linux is case-sensitive: rename it
+  (`mv wallasapi wallasAPI`) or re-clone with the explicit target name shown
+  above.
+
+</details>
 
 Interactive Swagger UI: **http://localhost:8001/docs**
 

@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.1.1] — 2026-05-16
+
+Linux install hotfix. The 4.1.0 docs assumed a Windows-friendly install path
+that broke on case-sensitive filesystems and on distros that ship Python
+without the `venv` module by default.
+
+### Added
+
+- **`start.sh`** — Linux/macOS launcher with parity to `start.bat`. Creates
+  `.venv` if missing, installs requirements, frees port 8001 if held by a
+  previous process, then runs `api_server.py`. Idempotent; safe to re-run.
+- **README troubleshooting block** for the three failure modes users will
+  actually hit on a fresh Linux box:
+  - `apt install python3.X-venv` failing on bleeding-edge Python (3.14+).
+  - `error: externally-managed-environment` (PEP 668).
+  - `ModuleNotFoundError: No module named 'wallasAPI'` when cloning into
+    a lowercase directory.
+
+### Fixed
+
+- **Install command now clones into a case-correct directory.** The Linux
+  install instructions previously did `git clone .../wallasapi.git` which
+  produces a `wallasapi/` folder. The codebase does `from wallasAPI.router
+  import AIRouter`, and because Linux filesystems are case-sensitive, the
+  import would fail. README now uses `git clone .../wallasapi.git wallasAPI`
+  with the capitalized target name.
+- **Launch command corrected** from `python -m wallasAPI.api_server` (which
+  only works if the parent directory contains a correctly-cased `wallasAPI/`
+  folder) to a plain `python api_server.py` that uses the in-file
+  `sys.path.insert` shim to bootstrap the package.
+
+---
+
 ## [4.1.0] — 2026-05-16
 
 Coherence pass: the engine was already mature, but README, `.env.example`,
@@ -147,5 +180,6 @@ Initial public release as WallasAPI (formerly `ai_services/`).
 
 ---
 
+[4.1.1]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.1
 [4.1.0]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.0
 [4.0.0]: https://github.com/wubjak/wallasapi/releases/tag/v4.0.0
