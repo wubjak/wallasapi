@@ -76,7 +76,11 @@ class AIRouter:
 
     MAX_CANDIDATES = 25
     STICKY_TTL_SECONDS = 300
-    REQUEST_TIMEOUT_SECONDS = 8.0
+    # Per-provider request timeout. NVIDIA NIM serverless and OpenRouter cold-starts
+    # can easily exceed 10 s, and agent workloads (Hermes/Cursor/etc.) ship large
+    # tool schemas that take longer to process. 60 s is a sane default; lower it
+    # via WALLAS_REQUEST_TIMEOUT_SECONDS=8 for hot/local setups.
+    REQUEST_TIMEOUT_SECONDS = float(os.getenv("WALLAS_REQUEST_TIMEOUT_SECONDS", "60.0"))
 
     def __init__(self):
         self.clients: Dict[str, Any] = {}

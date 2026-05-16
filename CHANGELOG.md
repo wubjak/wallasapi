@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.1.3] — 2026-05-16
+
+Bump the default per-provider request timeout from 8 s to 60 s, and make it
+configurable via env var. This is the fix for "Empty response from model —
+retrying (1/3)" warnings observed when agent clients (Hermes, Cursor,
+Continue) talk to providers with cold-start latency, especially NVIDIA NIM
+serverless endpoints.
+
+### Why
+
+NVIDIA's serverless NIM warms up a GPU on the first call after idle and can
+take 10-15 seconds to return its first token. Agent clients also ship
+massive system prompts with tool/skill schemas (Hermes sends 31 tools + 82
+skills) that the model must process before generating. The previous 8 s
+ceiling truncated those first calls, returning empty responses and forcing
+the client to retry — after which the warm endpoint replied in 1-2 s. The
+old timeout was tuned for a hot-only deployment that no longer reflects
+real-world usage.
+
+### Changed
+
+- `AIRouter.REQUEST_TIMEOUT_SECONDS` now reads from
+  `WALLAS_REQUEST_TIMEOUT_SECONDS` env var, defaulting to **60.0** (was 8.0
+  hard-coded).
+- `.env.example` documents the new knob with guidance on when to lower it
+  (hot setups: 8-15 s) and when to leave the default (anything touching
+  NVIDIA, OpenRouter, or HuggingFace serverless).
+
+### Fixed
+
+- Agent workloads no longer hit spurious "empty response" retries on the
+  first call to a cold provider. Llama-4-Maverick on NVIDIA via Hermes now
+  responds on the first attempt.
+
+---
+
 ## [4.1.2] — 2026-05-16
 
 `start.sh` now self-heals when the system's default Python lacks a working
@@ -207,6 +243,7 @@ Initial public release as WallasAPI (formerly `ai_services/`).
 
 ---
 
+[4.1.3]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.3
 [4.1.2]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.2
 [4.1.1]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.1
 [4.1.0]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.0
