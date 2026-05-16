@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.1.2] — 2026-05-16
+
+`start.sh` now self-heals when the system's default Python lacks a working
+`venv` module — the case for bleeding-edge interpreters (e.g. Python 3.14 on
+Ubuntu 26.04, where `python3.14-venv` is not yet in the apt repos at the time
+of release) and for distros that ship Python without `ensurepip`.
+
+### Changed
+
+- **`start.sh` probes multiple Python interpreters.** Instead of giving up
+  when `python3 -m venv` fails, the script now tries `$PYTHON` (if set),
+  `python3`, `python3.13`, `python3.12`, `python3.11`, `python3.10`, then
+  `python`, and picks the first one whose `venv` + `ensurepip` modules
+  actually import. Users can pin a specific interpreter with
+  `PYTHON=python3.12 ./start.sh`.
+- The "venv creation failed" error message is shorter and only printed when
+  *every* candidate fails. It points to the most reliable fix
+  (`sudo apt install python3.12 python3.12-venv`) first.
+
+### Fixed
+
+- A fresh install on Ubuntu with Python 3.14 as the default `python3` no
+  longer hard-errors. If `python3.12` (or another stable version) is
+  installed alongside, `start.sh` uses it transparently.
+
+---
+
 ## [4.1.1] — 2026-05-16
 
 Linux install hotfix. The 4.1.0 docs assumed a Windows-friendly install path
@@ -180,6 +207,7 @@ Initial public release as WallasAPI (formerly `ai_services/`).
 
 ---
 
+[4.1.2]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.2
 [4.1.1]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.1
 [4.1.0]: https://github.com/wubjak/wallasapi/releases/tag/v4.1.0
 [4.0.0]: https://github.com/wubjak/wallasapi/releases/tag/v4.0.0
