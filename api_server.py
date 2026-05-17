@@ -34,7 +34,10 @@ from pydantic import BaseModel, Field
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from wallasAPI.router import AIRouter
 from wallasAPI.config import MODELS_REGISTRY, PROVIDERS, PROVIDER_METADATA, PROXY_API_KEY_ENV
-from wallasAPI.model_fetcher import update_registry_async, load_registry_from_cache
+from wallasAPI.model_fetcher import (
+    update_registry_async, load_registry_from_cache,
+    verify_models_alive, cache_needs_verify,
+)
 from wallasAPI.search_engine import get_search_engine
 from wallasAPI.browser_engine import get_browser_client
 from wallasAPI.logger import log
@@ -71,6 +74,13 @@ async def lifespan(app: FastAPI):
         log.info("[FETCH] Descargando modelos por primera vez...")
         await update_registry_async()
         log.info(f"[READY] {len(MODELS_REGISTRY)} modelos cargados.")
+
+    # Background health probe of the catalog if it's never been verified
+    # or hasn't been re-checked in the last WALLAS_VERIFY_AT_STARTUP seconds.
+    if cache_needs_verify():
+        log.info("[VERIFY] Cache stale or unverified; running health probe in background.")
+        asyncio.create_task(verify_models_alive())
+
     yield
     log.info("[SHUTDOWN] WallasAPI-OpenClaw detenido.")
 
@@ -431,16 +441,19 @@ async def list_models(
     provider: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     sort: str = Query("context", regex="^(context|name|provider|latency|none)$"),
+    include_dead: bool = Query(False),
 ):
     """
     OpenAI-compatible model list.
     OpenClaw hace polling a este endpoint frecuentemente.
 
     Query params:
-      capability — filter by capability (e.g. vision, reasoning)
-      provider   — filter by provider id (e.g. nvidia, groq)
-      search     — substring match on model id
-      sort       — context (default, biggest context first), name, provider, latency, none
+      capability   — filter by capability (e.g. vision, reasoning)
+      provider     — filter by provider id (e.g. nvidia, groq)
+      search       — substring match on model id
+      sort         — context (default, biggest context first), name, provider, latency, none
+      include_dead — set true to include models the probe marked as dead
+                     (default: false; dead models are hidden from the listing)
     """
     models_data = []
     for v in VIRTUAL_MODELS:
@@ -472,6 +485,11 @@ async def list_models(
             continue
         if search and search.lower() not in mid:
             continue
+        # Hide models the probe confirmed are dead (alive=False), unless
+        # the caller explicitly asks for them. alive=None means "not probed
+        # yet" and is treated as alive.
+        if not include_dead and model.get("alive") is False:
+            continue
 
         entry = {
             "id": model["id"],
@@ -491,6 +509,9 @@ async def list_models(
                 "tts": "tts" in caps,
             },
             "metadata": meta,
+            "alive": model.get("alive"),
+            "last_check": model.get("last_check"),
+            "last_latency_ms": model.get("last_latency_ms"),
             "permission": [{"id": "modelperm-default", "object": "model_permission", "allow_view": True}],
             "root": model["id"],
             "parent": None,
@@ -508,6 +529,23 @@ async def list_models(
     # sort == "none" keeps insertion order
 
     return {"object": "list", "data": models_data}
+
+
+@app.post("/v1/models/verify")
+async def verify_models(
+    provider: Optional[str] = Query(None, description="Limit probe to a single provider"),
+    concurrency: Optional[int] = Query(None, ge=1, le=32, description="Max parallel probes"),
+):
+    """Trigger a fresh health probe of every chat-capable model.
+
+    Sends a minimal `chat.completions` request to each model and updates
+    `alive`, `last_check`, `last_latency_ms`, `last_error` on every entry.
+    Persists the registry afterwards.
+
+    Returns a summary: how many were tested, alive, dead, and how long it took.
+    """
+    result = await verify_models_alive(provider_filter=provider, concurrency=concurrency)
+    return result
 
 
 @app.get("/v1/models/{model_id}")

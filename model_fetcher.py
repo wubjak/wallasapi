@@ -9,7 +9,7 @@ import asyncio
 import aiohttp
 import json
 import time
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from .config import (
     PROVIDERS, PROVIDER_SPEED_PRIORITY, NON_CHAT_TYPES,
@@ -617,3 +617,154 @@ def update_registry_cache() -> list:
     except Exception as e:
         log.error(f"Error en update_registry_cache: {e}")
         return config.MODELS_REGISTRY
+
+
+# ============================================================================
+# Health probe — verify each model actually responds vs. just being listed
+# ============================================================================
+#
+# Provider catalogs (especially NVIDIA NIM) over-report: models get retired
+# but stay listed at the catalog endpoint. The probe sends a minimal
+# `chat.completions.create({messages:[{role:'user',content:'hi'}], max_tokens:4})`
+# to each chat-capable model and marks the result on the model entry:
+#
+#   {"alive": True|False, "last_check": <epoch>, "last_latency_ms": int,
+#    "last_error": str|None}
+#
+# Models with `alive: False` are filtered from /v1/models by default
+# (clients can opt-in with `?include_dead=true`).
+#
+# Providers using non-OpenAI SDKs (gemini, pollinations) are skipped — they
+# keep `alive: None` meaning "not probed, assume working".
+
+PROBE_TIMEOUT_S = float(os.getenv("WALLAS_PROBE_TIMEOUT_S", "6.0"))
+PROBE_CONCURRENCY = int(os.getenv("WALLAS_VERIFY_CONCURRENCY", "8"))
+PROBE_AT_STARTUP_TTL_S = int(os.getenv("WALLAS_VERIFY_AT_STARTUP", "86400"))  # 24h
+
+# Providers we probe via the OpenAI SDK (their `base_url` exposes /chat/completions).
+_OPENAI_COMPATIBLE_PROVIDERS = {
+    "github", "groq", "sambanova", "mistral", "openrouter",
+    "cerebras", "cohere", "huggingface", "nvidia", "ollama",
+}
+
+# Providers we skip (use native SDK or are not chat models).
+_PROBE_SKIP_PROVIDERS = {"gemini", "pollinations"}
+
+
+def _probe_single_sync(provider: str, model_id: str, api_key: Optional[str]) -> Dict[str, Any]:
+    """Send a minimal chat request. Returns {alive, latency_ms, error}."""
+    from openai import OpenAI
+    p_cfg = PROVIDERS.get(provider, {})
+    base_url = p_cfg.get("base_url")
+    if not base_url:
+        return {"alive": None, "latency_ms": 0, "error": "no base_url"}
+
+    t0 = time.time()
+    try:
+        client = OpenAI(base_url=base_url, api_key=api_key or "x", timeout=PROBE_TIMEOUT_S)
+        r = client.chat.completions.create(
+            model=model_id,
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=4,
+            temperature=0,
+        )
+        dt = int((time.time() - t0) * 1000)
+        txt = (r.choices[0].message.content or "").strip()
+        return {"alive": bool(txt), "latency_ms": dt, "error": None if txt else "empty response"}
+    except Exception as e:
+        dt = int((time.time() - t0) * 1000)
+        msg = str(e)
+        if "Error code:" in msg:
+            msg = msg.split("Error code:", 1)[-1].strip()
+        return {"alive": False, "latency_ms": dt, "error": msg[:160]}
+
+
+async def verify_models_alive(provider_filter: Optional[str] = None,
+                              concurrency: Optional[int] = None) -> Dict[str, Any]:
+    """Probe every chat-capable model in the registry.
+
+    Updates each model in-place with `alive`, `last_check`, `last_latency_ms`,
+    `last_error`. Persists the registry afterwards.
+
+    Args:
+      provider_filter: only probe this provider (e.g. 'nvidia'). None = all.
+      concurrency: max parallel probes. None = WALLAS_VERIFY_CONCURRENCY env.
+
+    Returns: {total, alive, dead, skipped, duration_s}
+    """
+    from . import config
+    sem_size = concurrency or PROBE_CONCURRENCY
+    sem = asyncio.Semaphore(sem_size)
+    loop = asyncio.get_running_loop()
+
+    candidates = []
+    skipped_no_key = 0
+    for m in config.MODELS_REGISTRY:
+        prov = (m.get("provider") or "").lower()
+        if provider_filter and prov != provider_filter.lower():
+            continue
+        if prov in _PROBE_SKIP_PROVIDERS:
+            continue
+        caps = set(m.get("capabilities", []))
+        if caps & NON_CHAT_TYPES:
+            continue
+        if prov not in _OPENAI_COMPATIBLE_PROVIDERS:
+            continue
+        # Need a key for non-local providers
+        env_key_name = PROVIDERS.get(prov, {}).get("env_key")
+        api_key = os.getenv(env_key_name) if env_key_name else None
+        if prov != "ollama" and not api_key:
+            skipped_no_key += 1
+            continue
+        candidates.append((m, prov, api_key))
+
+    t0 = time.time()
+    log.info(f"[VERIFY] Probing {len(candidates)} chat models "
+             f"(concurrency={sem_size}, timeout={PROBE_TIMEOUT_S}s)...")
+
+    async def probe_one(model_entry, prov, api_key):
+        async with sem:
+            return await loop.run_in_executor(
+                None, _probe_single_sync, prov, model_entry["id"], api_key
+            )
+
+    tasks = [probe_one(m, p, k) for m, p, k in candidates]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    alive = dead = 0
+    now = time.time()
+    for (model_entry, _prov, _key), res in zip(candidates, results):
+        if isinstance(res, Exception):
+            res = {"alive": False, "latency_ms": 0, "error": f"task crash: {type(res).__name__}"}
+        model_entry["alive"] = bool(res["alive"])
+        model_entry["last_check"] = now
+        model_entry["last_latency_ms"] = res["latency_ms"]
+        model_entry["last_error"] = res.get("error")
+        if model_entry["alive"]:
+            alive += 1
+        else:
+            dead += 1
+
+    save_registry_to_cache()
+    duration = round(time.time() - t0, 1)
+    log.info(f"[VERIFY] Done in {duration}s — alive={alive}, dead={dead}, "
+             f"skipped_no_key={skipped_no_key}")
+    return {
+        "total": len(candidates),
+        "alive": alive,
+        "dead": dead,
+        "skipped_no_key": skipped_no_key,
+        "duration_s": duration,
+    }
+
+
+def cache_needs_verify() -> bool:
+    """True if the cache has never been verified or is older than the TTL."""
+    from . import config
+    if not config.MODELS_REGISTRY:
+        return False
+    last_checks = [m.get("last_check", 0) for m in config.MODELS_REGISTRY]
+    newest = max(last_checks) if last_checks else 0
+    if newest == 0:
+        return True  # never verified
+    return (time.time() - newest) > PROBE_AT_STARTUP_TTL_S
