@@ -121,7 +121,15 @@ def _wallas_models_as_ollama_tags(virtual_models: List[Dict[str, Any]]) -> List[
             },
         })
 
-    for m in MODELS_REGISTRY:
+    # Sort cloud models by context_window descending so the most capable
+    # appear first in Ollama clients. Virtual models stay on top.
+    cloud_models = sorted(
+        MODELS_REGISTRY,
+        key=lambda m: m.get("metadata", {}).get("context_window", 0),
+        reverse=True,
+    )
+
+    for m in cloud_models:
         mid = m.get("id")
         if not mid or mid in seen:
             continue

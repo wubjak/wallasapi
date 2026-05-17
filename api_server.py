@@ -430,10 +430,17 @@ async def list_models(
     capability: Optional[str] = Query(None),
     provider: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    sort: str = Query("context", regex="^(context|name|provider|latency|none)$"),
 ):
     """
     OpenAI-compatible model list.
     OpenClaw hace polling a este endpoint frecuentemente.
+
+    Query params:
+      capability — filter by capability (e.g. vision, reasoning)
+      provider   — filter by provider id (e.g. nvidia, groq)
+      search     — substring match on model id
+      sort       — context (default, biggest context first), name, provider, latency, none
     """
     models_data = []
     for v in VIRTUAL_MODELS:
@@ -489,6 +496,16 @@ async def list_models(
             "parent": None,
         }
         models_data.append(entry)
+
+    if sort == "context":
+        models_data.sort(key=lambda m: m.get("context_window", 0), reverse=True)
+    elif sort == "name":
+        models_data.sort(key=lambda m: m["id"].lower())
+    elif sort == "provider":
+        models_data.sort(key=lambda m: (m.get("owned_by", "zzz"), -m.get("context_window", 0)))
+    elif sort == "latency":
+        models_data.sort(key=lambda m: m.get("metadata", {}).get("last_latency_ms", 99999))
+    # sort == "none" keeps insertion order
 
     return {"object": "list", "data": models_data}
 
