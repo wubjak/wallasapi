@@ -732,6 +732,7 @@ async def _openai_stream_generator(system_prompt, user_prompt, preferred_model, 
     loop = asyncio.get_event_loop()
     real_model = preferred_model
     real_provider = None
+    saw_tool_call = False
 
     def run_router():
         try:
@@ -799,13 +800,32 @@ async def _openai_stream_generator(system_prompt, user_prompt, preferred_model, 
             }
             yield f"data: {json.dumps(data)}\n\n"
 
+        elif chunk["type"] == "tool_calls":
+            # Forward tool_call deltas in OpenAI-compatible shape so agent
+            # clients (Hermes, Cursor, Continue) see them. Without this they
+            # receive "" content and treat the response as empty.
+            saw_tool_call = True
+            data = {
+                "id": chat_id,
+                "object": "chat.completion.chunk",
+                "created": created_time,
+                "model": real_model,
+                "provider": real_provider,
+                "choices": [{"index": 0, "delta": {"tool_calls": chunk["chunk"]}, "finish_reason": None}],
+            }
+            yield f"data: {json.dumps(data)}\n\n"
+
+    # If we emitted tool_calls, the finish_reason must be "tool_calls" per
+    # the OpenAI spec, not "stop". Clients use this to know they need to
+    # execute the tool and send results back.
+    finish_reason = "tool_calls" if saw_tool_call else "stop"
     final = {
         "id": chat_id,
         "object": "chat.completion.chunk",
         "created": created_time,
         "model": real_model,
         "provider": real_provider,
-        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
     }
     yield f"data: {json.dumps(final)}\n\n"
     yield "data: [DONE]\n\n"

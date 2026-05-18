@@ -807,6 +807,7 @@ class AIRouter:
                         delta = chunk.choices[0].delta
                         content = delta.content or ""
                         reasoning = getattr(delta, "reasoning_content", None)
+                        tool_calls = getattr(delta, "tool_calls", None)
                         if reasoning:
                             yield {"type": "reasoning", "chunk": reasoning}
                         if content:
@@ -815,6 +816,19 @@ class AIRouter:
                                 log.info(f"[SUCCESS] Ruteo: {preferred_model} -> {provider_name}/{model_id} (Estrategia: {strategy_desc})")
                             full_response += content
                             yield {"type": "content", "chunk": content}
+                        if tool_calls:
+                            # Forward function/tool call deltas to the SSE layer so
+                            # agent clients (Hermes, Cursor, Continue) see them
+                            # instead of receiving an empty stream.
+                            serialized = []
+                            for tc in tool_calls:
+                                try:
+                                    serialized.append(tc.model_dump(exclude_none=True))
+                                except AttributeError:
+                                    serialized.append(dict(tc) if hasattr(tc, "__iter__") else {"raw": str(tc)})
+                            if not full_response and not getattr(self, "_tc_logged", False):
+                                log.info(f"[SUCCESS] Ruteo (tool_calls): {preferred_model} -> {provider_name}/{model_id}")
+                            yield {"type": "tool_calls", "chunk": serialized}
 
                 # ---- Gemini ----
                 elif provider_name == "gemini":
@@ -849,13 +863,18 @@ class AIRouter:
                         curr["images"] = [img.split(",")[-1] for img in images]
                     messages.append(curr)
                     for chunk in client.chat(model=model_id, messages=messages, stream=True):
-                        c = chunk.get("message", {}).get("content", "")
+                        msg = chunk.get("message", {}) or {}
+                        c = msg.get("content", "")
+                        tc = msg.get("tool_calls")
                         if c:
                             if not full_response:
                                 strategy_desc = "Estabilidad de Contexto" if total_prompt_len > 15000 else "Velocidad Estándar"
                                 log.info(f"[SUCCESS] Ruteo: {preferred_model} -> {provider_name}/{model_id} (Estrategia: {strategy_desc})")
                             full_response += c
                             yield {"type": "content", "chunk": c}
+                        if tc:
+                            # Ollama emits tool calls already as plain dicts.
+                            yield {"type": "tool_calls", "chunk": tc}
 
                 if thread_id and full_response:
                     try:
