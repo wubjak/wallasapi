@@ -28,7 +28,8 @@ from .config import (
     MODELS_REGISTRY, PROVIDERS, NON_CHAT_TYPES,
     TEXT, VISION, AUDIO, FILE, FILE_SHIM, RAZONAMIENTO, FREE,
     EMBEDDING, RERANK, TTS, MOE, CODE, IMAGE_GEN, VIDEO_GEN,
-    RAPIDO, STANDARD, AUTO
+    RAPIDO, STANDARD, AGENTICO, VISTA, AUTO,
+    is_strong_tool_caller,
 )
 from .memory import MemoryManager
 from .file_utils import FileProcessor
@@ -309,7 +310,7 @@ class AIRouter:
         self._load_dynamic_aliases()
         
         # Filter out non-chat models for completion requests (unless explicitly requested via category)
-        is_category_request = preferred_model in [RAPIDO, STANDARD, RAZONAMIENTO, AUTO]
+        is_category_request = preferred_model in [RAPIDO, STANDARD, RAZONAMIENTO, AGENTICO, VISTA, AUTO]
         
         chat_models = [
             m for m in MODELS_REGISTRY
@@ -364,6 +365,25 @@ class AIRouter:
                         # Prioritize high-quality balanced models
                         if "sonnet" in mid or "gpt-4o" in mid: priority -= 5
                         elif "gemini-2.0-flash" in mid: priority -= 3
+                    elif preferred_model == AGENTICO:
+                        # Reliable multi-step tool callers only. Strong penalty
+                        # for models outside the curated list so the tier stays
+                        # trustworthy for agentic loops.
+                        if is_strong_tool_caller(mid):
+                            priority -= 8
+                        else:
+                            priority += 100  # effectively excluded
+                    elif preferred_model == VISTA:
+                        # Vision-capable models. Free preference is already
+                        # baked in via the is_free check above (prio 0 vs 50).
+                        # Hard-filter non-vision so the tier stays meaningful.
+                        if VISION in caps:
+                            priority -= 8
+                            # Prefer larger context inside the tier
+                            if not is_small_model:
+                                priority -= 2
+                        else:
+                            priority += 100  # effectively excluded
                     elif preferred_model == AUTO:
                         # Balanced logic: High context + Quality
                         if is_large: priority -= 5
@@ -402,7 +422,7 @@ class AIRouter:
             # Legacy form: "provider/model_id" — only split on '/' when the first
             # segment is a *real* provider in PROVIDERS. Otherwise the slash is
             # part of the publisher prefix and the id stays intact.
-            if preferred_model not in [RAPIDO, STANDARD, RAZONAMIENTO, AUTO]:
+            if preferred_model not in [RAPIDO, STANDARD, RAZONAMIENTO, AGENTICO, VISTA, AUTO]:
                 if ":" in preferred_model:
                     cand_prov, _, rest = preferred_model.partition(":")
                     if cand_prov.lower() in PROVIDERS:

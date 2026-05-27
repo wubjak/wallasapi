@@ -391,6 +391,36 @@ VIRTUAL_MODELS = [
             "description": "Chain-of-thought models (DeepSeek R1, Gemini 2.5 Pro).",
         }
     },
+    {
+        "id": "agentico",
+        "name": "Wallas AGENTICO",
+        "capabilities": {"chat": True, "tools": True, "vision": True},
+        "metadata": {
+            "context_window": 128000,
+            "pricing_tier": "free",
+            "supports_tools": True,
+            "supports_streaming": True,
+            "supports_reasoning_stream": False,
+            "input_modalities": ["text", "image"],
+            "output_modalities": ["text"],
+            "description": "Reliable multi-step tool callers (Claude Sonnet+, GPT-4o+, Llama 3.3 70B, Mistral Large, DeepSeek V3, Gemini 2.5+). Use for agentic loops where the model must invoke tools several times per turn.",
+        }
+    },
+    {
+        "id": "vista",
+        "name": "Wallas VISTA",
+        "capabilities": {"chat": True, "vision": True},
+        "metadata": {
+            "context_window": 128000,
+            "pricing_tier": "free",
+            "supports_tools": True,
+            "supports_streaming": True,
+            "supports_reasoning_stream": False,
+            "input_modalities": ["text", "image"],
+            "output_modalities": ["text"],
+            "description": "Free vision-capable models (Llama 3.2 Vision, Gemini Flash, Pixtral, Qwen-VL). Use when the request includes images.",
+        }
+    },
 ]
 
 
@@ -619,12 +649,21 @@ async def get_model_detail(model_id: str):
 # =============================================================================
 
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_auth)])
-async def chat_completions(request: OpenAI_ChatRequest):
+async def chat_completions(
+    request: OpenAI_ChatRequest,
+    x_willaku_tier: Optional[str] = Header(None, alias="X-Willaku-Tier"),
+):
     """
     Endpoint principal para OpenClaw.
     Soporta streaming y non-streaming.
+
+    Routing override: if the `X-Willaku-Tier` header is set to one of
+    `auto`, `rapido`, `standard`, `razonamiento`, `agentico`, `vista`, the
+    handler ignores `request.model` and routes through that tier instead.
+    Lets agentic clients keep their stored model preference while nudging
+    strategy per-request (documented in README under "Strategy via header").
     """
-    preferred_model = request.model
+    preferred_model = (x_willaku_tier or "").strip() or request.model
     reasoning_mode = preferred_model == "razonamiento"
 
     system_prompt, cleaned_messages = _normalize_messages_for_openclaw(request.messages)

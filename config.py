@@ -23,10 +23,56 @@ FREE = "free"              # Available at no cost
 RAPIDO = "rapido"
 STANDARD = "standard"
 RAZONAMIENTO = "razonamiento"
+AGENTICO = "agentico"      # Strong multi-step tool callers (Claude Sonnet+, GPT-4o+, Llama 3.3 70B, ...)
+VISTA = "vista"            # Free vision-capable models (multimodal text+image)
 AUTO = "auto"
 
 # Categories that indicate a model is NOT suitable for chat
 NON_CHAT_TYPES = {EMBEDDING, RERANK, TTS, IMAGE_GEN, VIDEO_GEN, "asr"}
+
+# ---------------------------------------------------------------------------
+# Strong-tool-caller heuristic — used by the AGENTICO tier.
+# Conservative pattern list of model families empirically reliable at
+# multi-step tool-calling sequences (i.e. invoking the same/different tool
+# several times within one assistant turn without dropping calls, hallucinating
+# tool names, or merging arguments).
+# Keep this list curated; do NOT auto-expand from provider metadata. The whole
+# point of this tier is "models that agents can trust" — false positives
+# defeat the purpose.
+# ---------------------------------------------------------------------------
+import re as _re_tools
+
+_STRONG_TOOL_CALLER_RE = _re_tools.compile(
+    r"("
+    r"claude-(sonnet|opus)-([3-9]|\d{2,})"    # Claude Sonnet/Opus 3.x and 4.x+
+    r"|gpt-(4o|4\.1|5|6)"                     # GPT-4o, 4.1, 5+
+    r"|gemini-(2\.5|3|4)"                     # Gemini 2.5+
+    r"|gemini-2\.0-flash"                     # Gemini 2.0 Flash (proven baseline)
+    r"|llama-3\.3-70b"                        # Llama 3.3 70B
+    r"|llama-3\.1-405b"                       # Llama 3.1 405B
+    r"|llama-(4|5)"                           # Llama 4+
+    r"|qwen-?2\.5-(72b|110b)"                 # Qwen 2.5 large
+    r"|qwen-?3"                               # Qwen 3+
+    r"|mistral-(large|medium)"                # Mistral Large/Medium
+    r"|magistral"                             # Magistral
+    r"|deepseek-v3"                           # DeepSeek V3
+    r"|deepseek-r1"                           # DeepSeek R1
+    r"|command-r-plus"                        # Cohere Command R+
+    r"|grok-(3|4|5)"                          # xAI Grok 3+
+    r")",
+    _re_tools.IGNORECASE,
+)
+
+
+def is_strong_tool_caller(model_id: str) -> bool:
+    """True for models proven reliable at multi-step tool-calling sequences.
+
+    Used by the AGENTICO virtual tier to filter the catalog to models an
+    agent can trust for `tools` calls. Pattern-based so future minor versions
+    (e.g. Claude Sonnet 5) match without code changes; major-family additions
+    (a new vendor) require updating `_STRONG_TOOL_CALLER_RE` above.
+    """
+    return bool(_STRONG_TOOL_CALLER_RE.search(model_id or ""))
 
 # --- Provider Configuration ---
 PROVIDERS = {

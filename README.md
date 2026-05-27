@@ -208,8 +208,10 @@ print(response.choices[0].message.content)
 | `rapido` | Lowest latency (Groq, Cerebras, SambaNova) |
 | `standard` | Quality/speed/cost balance |
 | `razonamiento` | Deep thinking (DeepSeek R1, o1, o3, Gemini 2.5 Pro) |
+| `agentico` | Reliable multi-step tool callers (Claude Sonnet+, GPT-4o+, Llama 3.3 70B, Mistral Large, DeepSeek V3, Gemini 2.5+) — use for agentic loops where the model must invoke tools several times per turn |
+| `vista` | Free vision-capable models (Llama 3.2 Vision, Gemini Flash, Pixtral, Qwen-VL) — use when the request includes images |
 
-**Strategy via header** — instead of overriding `model`, you can keep your existing model and add `X-Willaku-Tier: rapido|standard|razonamiento|auto` to any request. Add `X-Willaku-Web-Search: true` to enrich the prompt with live DuckDuckGo results. See [`DOCUMENTACION_COMPLETA.md`](DOCUMENTACION_COMPLETA.md) for the full header reference.
+**Strategy via header** — instead of overriding `model`, you can keep your existing model and add `X-Willaku-Tier: rapido|standard|razonamiento|agentico|vista|auto` to any request. Add `X-Willaku-Web-Search: true` to enrich the prompt with live DuckDuckGo results. See [`DOCUMENTACION_COMPLETA.md`](DOCUMENTACION_COMPLETA.md) for the full header reference.
 
 ---
 
