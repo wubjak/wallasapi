@@ -491,8 +491,14 @@ async def list_models(
         if not include_dead and model.get("alive") is False:
             continue
 
+        # Canonical id is "provider:model" so clients can pin a specific
+        # provider when the same publisher-prefixed id (e.g. meta/llama-...)
+        # exists under multiple providers. `alt_id` keeps the bare id for
+        # legacy clients.
+        canonical_id = f"{prov}:{model['id']}" if prov else model["id"]
         entry = {
-            "id": model["id"],
+            "id": canonical_id,
+            "alt_id": model["id"],
             "object": "model",
             "created": 1686935002,
             "owned_by": prov,
@@ -513,7 +519,7 @@ async def list_models(
             "last_check": model.get("last_check"),
             "last_latency_ms": model.get("last_latency_ms"),
             "permission": [{"id": "modelperm-default", "object": "model_permission", "allow_view": True}],
-            "root": model["id"],
+            "root": canonical_id,
             "parent": None,
         }
         models_data.append(entry)

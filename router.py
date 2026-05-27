@@ -396,12 +396,28 @@ class AIRouter:
             return chat_models
 
         if preferred_model:
-            # Handle "provider/model" format (e.g. from Gravedad selector)
-            if "/" in preferred_model and preferred_model not in [RAPIDO, STANDARD, RAZONAMIENTO, AUTO]:
-                parts = preferred_model.split("/", 1)
-                if not preferred_provider:
-                    preferred_provider = parts[0]
-                preferred_model = parts[1]
+            # ---- Provider:model disambiguation parser ----
+            # Canonical new form: "provider:model_id" (uses colon, never collides
+            # with publisher prefixes like 'meta/' or 'mistralai/' inside the id).
+            # Legacy form: "provider/model_id" — only split on '/' when the first
+            # segment is a *real* provider in PROVIDERS. Otherwise the slash is
+            # part of the publisher prefix and the id stays intact.
+            if preferred_model not in [RAPIDO, STANDARD, RAZONAMIENTO, AUTO]:
+                if ":" in preferred_model:
+                    cand_prov, _, rest = preferred_model.partition(":")
+                    if cand_prov.lower() in PROVIDERS:
+                        if not preferred_provider:
+                            preferred_provider = cand_prov.lower()
+                        preferred_model = rest
+                elif "/" in preferred_model:
+                    first_seg = preferred_model.split("/", 1)[0].lower()
+                    if first_seg in PROVIDERS:
+                        if not preferred_provider:
+                            preferred_provider = first_seg
+                        preferred_model = preferred_model.split("/", 1)[1]
+                    # else: first segment is a publisher prefix (meta/, mistralai/,
+                    # google/, nvidia/, qwen/, etc.). Leave preferred_model intact
+                    # so the catalog match works against ids like "meta/llama-3.3".
             # 1. Alias resolution (First check if it's a known alias like 'gpt-4o')
             alias_ids = MODEL_ALIASES.get(preferred_model.lower(), [])
             actual_pref = alias_ids[0] if alias_ids else preferred_model
