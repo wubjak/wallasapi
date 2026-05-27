@@ -415,6 +415,17 @@ class AIRouter:
             chat_models.sort(key=sort_key)
             return chat_models
 
+        # Virtual-tier routing — when preferred_model is a tier name (rapido,
+        # standard, razonamiento, agentico, vista, auto), there is no concrete
+        # catalog id to match. Skip the per-id lookup chain below and rank
+        # via sort_key, which already has the tier-aware priority math.
+        # Without this branch the function falls all the way through line 562
+        # and returns chat_models in cache-load order — silently defeating
+        # every tier including the legacy ones.
+        if preferred_model in [RAPIDO, STANDARD, RAZONAMIENTO, AGENTICO, VISTA, AUTO]:
+            chat_models.sort(key=sort_key)
+            return chat_models
+
         if preferred_model:
             # ---- Provider:model disambiguation parser ----
             # Canonical new form: "provider:model_id" (uses colon, never collides
