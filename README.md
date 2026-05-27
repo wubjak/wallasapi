@@ -110,11 +110,12 @@ cd wallasapi
 # Server is up at http://localhost:8001
 ```
 
-### Linux / macOS
+### Linux / macOS / WSL2
 
 ```bash
-# Prerequisite (Debian/Ubuntu only — install once):
-#   sudo apt install -y python3 python3-venv python3-pip
+# Prerequisite (Debian/Ubuntu/WSL2 only — install once).
+# libgl1 + libglib2.0-0 are needed by easyocr/opencv. lsof lets start.sh free port 8001.
+sudo apt install -y python3 python3-venv python3-pip libgl1 libglib2.0-0 lsof
 
 # IMPORTANT: clone with the capitalized name so the package import path matches
 # (the codebase imports `wallasAPI` and Linux filesystems are case-sensitive).
@@ -123,6 +124,16 @@ cd wallasAPI
 chmod +x start.sh
 ./start.sh
 ```
+
+> **Running on WSL2 alongside another agent (Hermes, OpenClaw, etc.)?**
+> WallasAPI binds to `0.0.0.0:8001`, so it's reachable from inside WSL at
+> `http://localhost:8001/v1` **and** from the Windows host at the same URL
+> (WSL2 forwards localhost automatically). If your Ollama daemon lives on the
+> Windows side, set `OLLAMA_UPSTREAM=http://host.docker.internal:11434` in
+> `.env`. Skip `./install-launcher.sh` on headless WSL — it needs a GUI
+> terminal emulator. Point your agent at `http://localhost:8001/v1` (OpenAI
+> wire) or `http://localhost:8001/v1/messages` (Anthropic wire) — both
+> protocols share the same port.
 
 Or manually if you prefer to see each step:
 

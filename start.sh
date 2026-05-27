@@ -91,6 +91,25 @@ else
   uv pip install --quiet -r "${WALLAS_DIR}/requirements.txt"
 fi
 
+# ------------------------------------------------ native library preflight
+# easyocr (OCR fallback) loads opencv at import time, which needs libGL and
+# libglib at the system level. They are NOT pulled in by pip. On a fresh WSL2
+# / Debian container the import fails with a cryptic
+#   ImportError: libGL.so.1: cannot open shared object file
+# Surface a friendly apt command up-front so the user knows exactly what to do.
+# Non-fatal — chat/completion endpoints work without these libs; only the OCR
+# pipeline and a few Camofox helpers need them.
+MISSING_LIBS=()
+if command -v ldconfig >/dev/null 2>&1; then
+  ldconfig -p 2>/dev/null | grep -q "libGL.so.1"        || MISSING_LIBS+=("libgl1")
+  ldconfig -p 2>/dev/null | grep -q "libglib-2.0.so.0"  || MISSING_LIBS+=("libglib2.0-0")
+fi
+if (( ${#MISSING_LIBS[@]} > 0 )); then
+  echo "[WARN] Missing native libraries used by OCR / opencv: ${MISSING_LIBS[*]}"
+  echo "       Install them with:  sudo apt install -y ${MISSING_LIBS[*]}"
+  echo "       Chat/completion endpoints work without these — only /v1/ocr/* needs them."
+fi
+
 # ----------------------------------------------------------- free port 8001
 PORT="${WALLAS_PORT:-8001}"
 if command -v lsof >/dev/null 2>&1; then
