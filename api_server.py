@@ -149,6 +149,7 @@ class OpenAI_ChatRequest(BaseModel):
     response_format: Optional[Dict[str, Any]] = None
     # OpenClaw/Claude Code envían esto a veces
     thinking: Optional[Union[str, Dict[str, Any]]] = None
+    web_search: Optional[bool] = False
 
 
 class Anthropic_Message(BaseModel):
@@ -228,9 +229,50 @@ class YouTubeTranscriptRequest(BaseModel):
     languages: Optional[List[str]] = None
 
 
-# =============================================================================
-# Helpers
-# =============================================================================
+def extract_clean_search_query(prompt: str) -> str:
+    """
+    Extrae términos de búsqueda limpios en español, removiendo verbos conversacionales,
+    preposiciones, pronombres y stopwords, y quitando acentos para máxima compatibilidad con motores de búsqueda.
+    """
+    if not prompt:
+        return ""
+    # 1. Convertir a minúsculas y quitar acentos
+    query = prompt.lower()
+    accents = {"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ü": "u", "ñ": "n"}
+    for acc, clean_char in accents.items():
+        query = query.replace(acc, clean_char)
+        
+    # 2. Quitar puntuación común
+    for char in ["?", "¿", "!", "¡", ",", ".", ";", ":", "\"", "'", "(", ")", "-", "_"]:
+        query = query.replace(char, " ")
+        
+    # 3. Stopwords y palabras ruidosas conversacionales en español
+    blacklist = {
+        # preposiciones / conjunciones
+        "de", "la", "el", "en", "y", "a", "los", "un", "una", "unos", "unas", 
+        "con", "por", "para", "sobre", "entre", "desde", "hasta", "sin", "tras", "o", "u", "e",
+        # pronombres
+        "que", "este", "esta", "esto", "estos", "estas", "aquel", "aquella",
+        "me", "te", "se", "nos", "os", "lo", "le", "les", "mi", "tu", "su", "sus", "como", "cual", "cuales",
+        # verbos conversacionales / peticiones
+        "hola", "busca", "buscar", "googlea", "dime", "saber", "quiero", "puedes", 
+        "encuentra", "encontrar", "diga", "digame", "pido", "pedi", "pregunta", "consultar", "consulta",
+        # ruido de instrucciones de búsqueda
+        "internet", "web", "google", "favor", "actualizado", "actualizada", "informacion", "datos", "hoy", "actual",
+        "dia", "tiempo", "real", "siguiente", "usuario"
+    }
+    
+    words = query.split()
+    filtered_words = [w for w in words if w not in blacklist and len(w) > 1]
+    
+    # Si la lista queda vacía o muy corta, usamos una limpieza más permisiva
+    if len(filtered_words) < 2:
+        basic_blacklist = {"hola", "busca", "buscar", "en", "la", "el", "de", "y", "internet", "web"}
+        filtered_words = [w for w in words if w not in basic_blacklist]
+        
+    cleaned = " ".join(filtered_words).strip()
+    return cleaned if cleaned else prompt
+
 
 def _normalize_messages_for_openclaw(messages: List[OpenAI_Message]) -> tuple:
     """
@@ -599,7 +641,9 @@ async def chat_completions(request: OpenAI_ChatRequest):
     if use_web_search:
         try:
             se = get_search_engine()
-            search_ctx = se.search_and_summarize(user_prompt, router, max_results=8)
+            clean_query = extract_clean_search_query(user_prompt)
+            log.info(f"[WEB_SEARCH] Query original: '{user_prompt[:60]}...' -> Limpia: '{clean_query}'")
+            search_ctx = se.search_and_summarize(clean_query, router, max_results=8)
             system_prompt += f"\n\n[CONTEXTO DE BÚSQUEDA WEB ACTIVADO]\n{search_ctx}\n[FIN CONTEXTO WEB]"
         except Exception as e:
             log.warning(f"[WEB_SEARCH] Falló para chat completions: {e}")

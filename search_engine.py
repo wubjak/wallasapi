@@ -53,6 +53,7 @@ class WebSearchEngine:
             raise RuntimeError("duckduckgo-search no instalado. Instala: pip install duckduckgo-search")
 
         results = []
+        # 1. Intentar con el método estándar text()
         try:
             with DDGS() as ddgs:
                 for r in ddgs.text(query, max_results=max_results):
@@ -63,8 +64,25 @@ class WebSearchEngine:
                         "source": "duckduckgo",
                     })
         except Exception as e:
-            log.warning(f"[SEARCH] DuckDuckGo falló: {e}")
-            raise
+            log.warning(f"[SEARCH] DuckDuckGo text() falló para '{query}': {e}. Intentando fallback a html...")
+
+        # 2. Fallback resiliente a _text_html() si text() dio vacío o falló
+        if not results:
+            try:
+                log.info(f"[SEARCH] DuckDuckGo text() no devolvió resultados para '{query}'. Probando fallback _text_html()...")
+                with DDGS() as ddgs:
+                    for r in ddgs._text_html(query, max_results=max_results):
+                        results.append({
+                            "title": r.get("title", ""),
+                            "url": r.get("href", ""),
+                            "snippet": _clean_html(r.get("body", "")),
+                            "source": "duckduckgo_html",
+                        })
+            except Exception as e:
+                log.error(f"[SEARCH] Fallback DuckDuckGo _text_html() también falló para '{query}': {e}")
+                if not results:
+                    raise
+
         return results
 
     # ------------------------------------------------------------------
