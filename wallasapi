@@ -34,7 +34,10 @@ _is_running() {
 }
 
 _print_help() {
-  sed -n '3,18p' "$0" | sed 's/^# \{0,1\}//'
+  # Extract the leading comment block (after the shebang) as usage text.
+  # Robust to line-count drift: prints only consecutive # lines, stops at
+  # the first non-comment line.
+  awk 'NR==1{next} /^#!/{next} /^# ?/{sub(/^# ?/,""); print; next} {exit}' "$0"
 }
 
 # ---------------------------------------------------------------- dispatch
