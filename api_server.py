@@ -288,13 +288,25 @@ def _normalize_messages_for_openclaw(messages: List[OpenAI_Message]) -> tuple:
         if m.role == "system":
             system_prompt = m.content if isinstance(m.content, str) else str(m.content)
         elif m.role in ("user", "assistant", "tool"):
-            cleaned_messages.append({
+            # Build dict WITHOUT None-valued fields. Strict OpenAI validators
+            # downstream (notably NVIDIA NIM Nemotron, which runs vLLM with
+            # pydantic strict discriminated unions) reject `name: null`,
+            # `tool_calls: null`, `tool_call_id: null` and return HTTP 400
+            # with "Input should be a valid string / iterable" errors that
+            # circuit-break a perfectly good model out of the routing pool.
+            # Other providers (OpenAI, Gemini, Groq) tolerate the Nones but
+            # gain nothing from them, so just omit at the source.
+            msg_dict = {
                 "role": m.role,
                 "content": m.content if isinstance(m.content, str) else str(m.content),
-                "name": m.name,
-                "tool_calls": m.tool_calls,
-                "tool_call_id": m.tool_call_id,
-            })
+            }
+            if m.name is not None:
+                msg_dict["name"] = m.name
+            if m.tool_calls is not None:
+                msg_dict["tool_calls"] = m.tool_calls
+            if m.tool_call_id is not None:
+                msg_dict["tool_call_id"] = m.tool_call_id
+            cleaned_messages.append(msg_dict)
 
     return system_prompt, cleaned_messages
 
