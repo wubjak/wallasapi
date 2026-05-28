@@ -369,6 +369,14 @@ class AIRouter:
                         # Reliable multi-step tool callers only. Strong penalty
                         # for models outside the curated list so the tier stays
                         # trustworthy for agentic loops.
+                        # STRICT-FREE: paid models are pushed so far down they
+                        # are effectively unreachable. Users opt into agentico
+                        # specifically because their free tier is enough — a
+                        # silent fallback to a paid model would surprise them
+                        # with billing. If all free strong callers fail, the
+                        # request errors out, which is the desired behavior.
+                        if not is_free:
+                            priority += 1000
                         if is_strong_tool_caller(mid):
                             priority -= 8
                         else:
