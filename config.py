@@ -42,6 +42,14 @@ NON_CHAT_TYPES = {EMBEDDING, RERANK, TTS, IMAGE_GEN, VIDEO_GEN, "asr"}
 # ---------------------------------------------------------------------------
 import re as _re_tools
 
+# Models the regex would otherwise accept, but providers have explicitly
+# marked as deprecated. Substring match against the bare id (publisher
+# prefix stripped) so 'mistralai/mistral-medium-3-instruct' is caught.
+_DEPRECATED_TOOL_MODEL_PATTERNS = (
+    "magistral-small-2506",          # Mistral, retired
+    "mistral-medium-3-instruct",     # Mistral, superseded by mistral-medium-3.5-128b
+)
+
 _STRONG_TOOL_CALLER_RE = _re_tools.compile(
     r"("
     r"claude-(sonnet|opus)-([3-9]|\d{2,})"    # Claude Sonnet/Opus 3.x and 4.x+
@@ -54,11 +62,15 @@ _STRONG_TOOL_CALLER_RE = _re_tools.compile(
     r"|qwen-?2\.5-(72b|110b)"                 # Qwen 2.5 large
     r"|qwen-?3"                               # Qwen 3+
     r"|mistral-(large|medium)"                # Mistral Large/Medium
-    r"|magistral"                             # Magistral
+    r"|mistral-nemotron"                      # NVIDIA NIM, explicit function-calling tuning
+    r"|magistral"                             # Magistral (deprecated variants filtered below)
     r"|deepseek-v3"                           # DeepSeek V3
     r"|deepseek-r1"                           # DeepSeek R1
     r"|command-r-plus"                        # Cohere Command R+
     r"|grok-(3|4|5)"                          # xAI Grok 3+
+    r"|seed-oss-\d+b"                         # ByteDance Seed-OSS (agentic)
+    r"|step-3\.5-flash"                       # Stepfun Step-3.5 Flash (agentic, NVIDIA NIM)
+    r"|minimax-m\d"                           # MiniMax M-series (M1, M2, M2.7+) — 200B+ coding+reasoning
     r")",
     _re_tools.IGNORECASE,
 )
@@ -71,8 +83,18 @@ def is_strong_tool_caller(model_id: str) -> bool:
     agent can trust for `tools` calls. Pattern-based so future minor versions
     (e.g. Claude Sonnet 5) match without code changes; major-family additions
     (a new vendor) require updating `_STRONG_TOOL_CALLER_RE` above.
+
+    Deprecated models are explicitly filtered even if they match the pattern —
+    see `_DEPRECATED_TOOL_MODEL_PATTERNS` above.
     """
-    return bool(_STRONG_TOOL_CALLER_RE.search(model_id or ""))
+    if not model_id:
+        return False
+    # Strip publisher prefix so 'meta/llama-3.3-70b' and 'llama-3.3-70b'
+    # are treated identically, and the deprecation check sees the bare id.
+    bare = model_id.rsplit("/", 1)[-1].lower()
+    if any(d in bare for d in _DEPRECATED_TOOL_MODEL_PATTERNS):
+        return False
+    return bool(_STRONG_TOOL_CALLER_RE.search(model_id))
 
 # --- Provider Configuration ---
 PROVIDERS = {
