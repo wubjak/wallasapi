@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# WallasAPI CLI dispatcher.
+#
+# Install once:
+#   ln -s "$PWD/wallasapi" ~/.local/bin/wallasapi
+# (assumes ~/.local/bin is on PATH, which is the default on most distros)
+#
+# Then anywhere:
+#   wallasapi               # start in foreground (Ctrl+C to stop)
+#   wallasapi start         # start in background, logs to /tmp/wallas.log
+#   wallasapi stop          # stop the running server
+#   wallasapi restart       # stop + start (foreground)
+#   wallasapi update        # git pull + refresh deps + restart in background
+#   wallasapi status        # is it running? on which commit? how many models?
+#   wallasapi logs          # tail -f the background logs
+#   wallasapi -h | --help   # this help
+
+set -u
+
+# Resolve the repo directory via the script's own location (handles symlinks).
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  TARGET="$(readlink "$SOURCE")"
+  [[ "$TARGET" = /* ]] && SOURCE="$TARGET" || SOURCE="$(cd -P "$(dirname "$SOURCE")" && pwd)/$TARGET"
+done
+WALLAS_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+
+PORT="${WALLAS_PORT:-8001}"
+LOGFILE="${WALLAS_LOG:-/tmp/wallas.log}"
+
+# ---------------------------------------------------------------- helpers
+_is_running() {
+  command -v ss >/dev/null 2>&1 && ss -tln 2>/dev/null | grep -q ":$PORT "
+}
+
+_print_help() {
+  sed -n '3,18p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+# ---------------------------------------------------------------- dispatch
+case "${1:-}" in
+  ""|"-f"|"--foreground")
+    # Default: foreground start (matches what `./start.sh` does — Ctrl+C friendly).
+    exec "$WALLAS_DIR/start.sh"
+    ;;
+
+  start)
+    if _is_running; then
+      echo "[INFO] Already running on :$PORT — nothing to do (use 'restart' to force)."
+      exit 0
+    fi
+    echo "[INFO] Starting in background. Logs: $LOGFILE"
+    nohup "$WALLAS_DIR/start.sh" > "$LOGFILE" 2>&1 &
+    disown
+    # Brief wait so the user sees confirmation
+    for _ in $(seq 1 15); do
+      _is_running && { echo "[OK] :$PORT bound."; exit 0; }
+      sleep 1
+    done
+    echo "[WARN] Not bound after 15s. Last log lines:"
+    tail -10 "$LOGFILE" 2>/dev/null
+    exit 1
+    ;;
+
+  stop)
+    exec "$WALLAS_DIR/stop.sh"
+    ;;
+
+  restart)
+    "$WALLAS_DIR/stop.sh" || true
+    sleep 1
+    exec "$WALLAS_DIR/start.sh"
+    ;;
+
+  update|upgrade|pull)
+    exec "$WALLAS_DIR/update.sh"
+    ;;
+
+  status)
+    echo "Repo:   $WALLAS_DIR"
+    if [[ -d "$WALLAS_DIR/.git" ]]; then
+      echo "Commit: $(git -C "$WALLAS_DIR" log -1 --oneline 2>/dev/null)"
+    fi
+    if _is_running; then
+      PIDS="$(lsof -ti:"$PORT" 2>/dev/null || true)"
+      echo "Status: RUNNING on :$PORT (pid $PIDS)"
+      # Quick model count if curl is around
+      if command -v curl >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+        curl -s "http://localhost:$PORT/v1/models" 2>/dev/null | \
+          python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    ms = d.get('data', [])
+    virtual = sorted({m['id'] for m in ms if m['id'] in ('auto','rapido','standard','razonamiento','agentico','vista')})
+    print(f'Models: {len(ms)} total | tiers: {\" \".join(virtual)}')
+except Exception:
+    pass
+" 2>/dev/null
+      fi
+    else
+      echo "Status: NOT RUNNING"
+    fi
+    ;;
+
+  logs|log)
+    if [[ ! -f "$LOGFILE" ]]; then
+      echo "[INFO] No log at $LOGFILE — server probably running in foreground."
+      exit 1
+    fi
+    exec tail -f "$LOGFILE"
+    ;;
+
+  -h|--help|help)
+    _print_help
+    ;;
+
+  *)
+    echo "Unknown subcommand: $1" >&2
+    echo "" >&2
+    _print_help >&2
+    exit 2
+    ;;
+esac

@@ -146,14 +146,34 @@ pip install -r requirements.txt
 python api_server.py
 ```
 
-**Optional — install a one-click launcher** so WallasAPI shows up in your application menu (Activities → Show Apps) and can be pinned to the dock:
+**Optional — install the `wallasapi` CLI** so you get one command for everything (`start`, `stop`, `update`, `status`, `logs`) instead of `cd`-ing into the repo:
+
+```bash
+cd wallasAPI
+mkdir -p ~/.local/bin && ln -sf "$PWD/wallasapi" ~/.local/bin/wallasapi
+# If ~/.local/bin isn't on your PATH yet:
+#   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+```
+
+Then from anywhere:
+
+```bash
+wallasapi              # start in foreground (Ctrl+C to stop)
+wallasapi start        # start in background, logs to /tmp/wallas.log
+wallasapi stop         # stop the running server
+wallasapi update       # git pull + refresh deps + restart (the most useful one)
+wallasapi status       # is it running? on which commit? how many models?
+wallasapi logs         # tail -f the background log
+```
+
+**Optional GUI launcher** (Linux desktops with Activities / app menu):
 
 ```bash
 cd wallasAPI
 ./install-launcher.sh
 ```
 
-After this, double-clicking the "WallasAPI" icon (or searching it in Activities) starts the server inside a terminal window — no more remembering to `cd` and activate the venv by hand. A companion "Stop WallasAPI" entry is also installed.
+After this, double-clicking the "WallasAPI" icon (or searching it in Activities) starts the server inside a terminal window. A companion "Stop WallasAPI" entry is also installed. Skip this on headless WSL — it needs a GUI terminal emulator.
 
 <details>
 <summary>Troubleshooting</summary>
