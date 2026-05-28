@@ -339,11 +339,21 @@ class AIRouter:
                 has_reasoning = r_flag in caps
                 is_moe = MOE in caps
                 
-                # Context Penalty: Models with known small contexts (SambaNova, Groq, Cerebras often have limits)
-                small_context_providers = ["cerebras", "groq", "sambanova"]
-                is_small_model = any(s in mid for s in ["8b", "7b", "3b", "1b", "0.5b", "nano"])
-                
-                has_context_risk = is_large and (provider in small_context_providers or is_small_model)
+                # Context-aware penalty: use the model's actual context_window
+                # from metadata instead of the old hardcoded provider list
+                # (which was overly punitive — Groq Llama 3.3 70B, SambaNova
+                # 405B, etc. all have 128K contexts now). Reserve ~4K tokens
+                # (~16K chars) of headroom for the response.
+                ctx_window = (m_meta or {}).get("context_window", 0) or 0
+                if ctx_window > 0:
+                    ctx_chars = ctx_window * 4  # ~4 chars per token
+                    needed_chars = prompt_len + 16000  # response headroom
+                    has_context_risk = ctx_chars < needed_chars
+                else:
+                    # Fallback for models with no context_window metadata:
+                    # only penalize obviously-tiny models by name.
+                    is_small_model = any(s in mid for s in ["8b", "7b", "3b", "1b", "0.5b", "nano"])
+                    has_context_risk = is_large and is_small_model
 
                 # If a specific category was requested as 'preferred_model'
                 if is_category_request:
