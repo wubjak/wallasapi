@@ -274,6 +274,35 @@ def extract_clean_search_query(prompt: str) -> str:
     return cleaned if cleaned else prompt
 
 
+def _sanitize_tools(tools: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
+    """Drop tool entries missing a valid function name.
+
+    NVIDIA NIM (and most strict OpenAI-compatible backends) reject the whole
+    request with 400 when any tool in the array has an empty/missing
+    `function.name`. A single malformed tool from the client therefore
+    cascades through every Mistral/strict model in the registry until the
+    router falls back to a lenient one (Gemini), which silently accepts the
+    bad payload and produces low-quality replies.
+    """
+    if not tools:
+        return tools
+    clean = []
+    dropped = 0
+    for t in tools:
+        if not isinstance(t, dict):
+            dropped += 1
+            continue
+        fn = t.get("function") or {}
+        name = (fn.get("name") or "").strip()
+        if not name:
+            dropped += 1
+            continue
+        clean.append(t)
+    if dropped:
+        log.warning(f"[TOOLS] Sanitized {dropped} tool(s) with empty/missing function.name")
+    return clean or None
+
+
 def _normalize_messages_for_openclaw(messages: List[OpenAI_Message]) -> tuple:
     """
     Normaliza mensajes OpenAI para el router interno.
@@ -701,11 +730,13 @@ async def chat_completions(
 
     thread_id = f"oc_{uuid.uuid4().hex[:8]}"
 
+    sanitized_tools = _sanitize_tools(request.tools)
+
     if request.stream:
         return StreamingResponse(
             _openai_stream_generator(
                 system_prompt, user_prompt, preferred_model, thread_id,
-                request.tools, request.tool_choice, reasoning_mode, history
+                sanitized_tools, request.tool_choice, reasoning_mode, history
             ),
             media_type="text/event-stream",
             headers={
@@ -719,7 +750,7 @@ async def chat_completions(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             preferred_model=preferred_model,
-            tools=request.tools,
+            tools=sanitized_tools,
             tool_choice=request.tool_choice,
             return_metadata=True,
             reasoning=reasoning_mode,

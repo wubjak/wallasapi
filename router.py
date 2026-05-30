@@ -858,12 +858,13 @@ class AIRouter:
                     yield {"type": "shim_notice", "chunk": shim_notice}
 
                 full_response = ""
+                tc_logged = False
 
                 # ---- OpenAI-compatible ----
                 if provider_name in ("github", "groq", "sambanova", "mistral", "openrouter", "cerebras", "cohere", "huggingface", "nvidia"):
                     stream = self._call_openai_style(
                         provider_name, model_id, p_cfg["base_url"], api_key,
-                        enriched_prompt, user_prompt, images, history, 
+                        enriched_prompt, user_prompt, images, history,
                         stream=True, tools=tools, tool_choice=tool_choice
                     )
                     for chunk in stream:
@@ -891,8 +892,9 @@ class AIRouter:
                                     serialized.append(tc.model_dump(exclude_none=True))
                                 except AttributeError:
                                     serialized.append(dict(tc) if hasattr(tc, "__iter__") else {"raw": str(tc)})
-                            if not full_response and not getattr(self, "_tc_logged", False):
+                            if not full_response and not tc_logged:
                                 log.info(f"[SUCCESS] Ruteo (tool_calls): {preferred_model} -> {provider_name}/{model_id}")
+                                tc_logged = True
                             yield {"type": "tool_calls", "chunk": serialized}
 
                 # ---- Gemini ----
