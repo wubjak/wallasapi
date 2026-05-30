@@ -332,7 +332,20 @@ def _normalize_messages_for_openclaw(messages: List[OpenAI_Message]) -> tuple:
             if m.name is not None:
                 msg_dict["name"] = m.name
             if m.tool_calls is not None:
-                msg_dict["tool_calls"] = m.tool_calls
+                # Drop tool_call entries whose function.name is empty/missing.
+                # These come from truncated streams: when the model hits
+                # max_tokens mid-tool-call, the partial delta is still saved
+                # to history as `assistant.tool_calls[]`, and replaying it on
+                # the next turn makes strict backends (NVIDIA NIM, vLLM)
+                # reject the whole request with 400 "Function name was ..."
+                # — circuit-breaking the model out of the pool until cooldown.
+                clean_tc = []
+                for tc in m.tool_calls:
+                    fn = (tc or {}).get("function") or {}
+                    if (fn.get("name") or "").strip():
+                        clean_tc.append(tc)
+                if clean_tc:
+                    msg_dict["tool_calls"] = clean_tc
             if m.tool_call_id is not None:
                 msg_dict["tool_call_id"] = m.tool_call_id
             cleaned_messages.append(msg_dict)

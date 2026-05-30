@@ -1320,10 +1320,18 @@ class AIRouter:
             messages.extend(history)
         messages.append({"role": "user", "content": user_msg_content})
         
+        # Tool-calling responses must fit the full JSON envelope of every
+        # invocation (name + arguments) plus the assistant's prose answer.
+        # Smaller models (Ministral 14B, Nemotron Nano) routinely truncate
+        # mid-tool-call at the default 4096 cap, leaving partial JSON that
+        # clients (Hermes) reject with "incomplete tool arguments" and that
+        # poisons history with `function.name = ""`. Doubling the budget when
+        # tools are advertised lets the model finish its calls cleanly.
+        max_tokens = 8192 if tools else 4096
         create_kwargs = {
             "model": model,
             "messages": messages,
-            "max_tokens": 4096,
+            "max_tokens": max_tokens,
             "temperature": 0.7,
             "stream": stream,
         }
