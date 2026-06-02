@@ -1320,14 +1320,16 @@ class AIRouter:
             messages.extend(history)
         messages.append({"role": "user", "content": user_msg_content})
         
-        # Tool-calling responses must fit the full JSON envelope of every
-        # invocation (name + arguments) plus the assistant's prose answer.
-        # Smaller models (Ministral 14B, Nemotron Nano) routinely truncate
-        # mid-tool-call at the default 4096 cap, leaving partial JSON that
-        # clients (Hermes) reject with "incomplete tool arguments" and that
-        # poisons history with `function.name = ""`. Doubling the budget when
-        # tools are advertised lets the model finish its calls cleanly.
-        max_tokens = 8192 if tools else 4096
+        # Tool-calling responses must fit: (a) the model's chain-of-thought
+        # prose, (b) the full JSON envelope of every tool invocation
+        # (name + arguments — web_search snippets in particular blow up),
+        # plus (c) the assistant's final answer. Smaller models (Ministral
+        # 14B, Nemotron Nano) are verbose enough to truncate at 8192 mid
+        # tool-call, leaving partial JSON that the client (Hermes) rejects
+        # with "incomplete tool arguments" and that poisons history with
+        # `function.name = ""`. 16384 is comfortably under Ministral 14B's
+        # 128k context window and stops the truncation in practice.
+        max_tokens = 16384 if tools else 4096
         create_kwargs = {
             "model": model,
             "messages": messages,
