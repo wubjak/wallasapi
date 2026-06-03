@@ -64,7 +64,19 @@ source "${VENV_DIR}/bin/activate"
 # without pip installed. If we naively run `pip install` we'd shell out to
 # the system pip and hit PEP 668 (externally-managed-environment). Detect
 # that and either bootstrap pip via ensurepip or fall back to `uv pip`.
-echo "[INFO] Ensuring dependencies are installed..."
+# Pick requirements file. Default = requirements-min.txt (fast, ~2 min),
+# which skips easyocr/torch (~1GB). Set WALLAS_FULL_INSTALL=1 for the full
+# install with OCR support. We DO NOT use --quiet anywhere here — silencing
+# pip on a fresh box leaves the user staring at "Ensuring dependencies..."
+# for 15+ minutes thinking the script hung, while torch downloads in the
+# dark. Show real progress instead so the user can see the download bar.
+REQ_FILE="${WALLAS_DIR}/requirements-min.txt"
+if [[ "${WALLAS_FULL_INSTALL:-0}" == "1" ]] || [[ ! -f "$REQ_FILE" ]]; then
+  REQ_FILE="${WALLAS_DIR}/requirements.txt"
+  echo "[INFO] Installing FULL dependencies (incl. easyocr/torch ~1GB). This will take 10-20 min on first run."
+else
+  echo "[INFO] Installing MIN dependencies (no OCR). Set WALLAS_FULL_INSTALL=1 if you need /v1/ocr/*."
+fi
 
 INSTALLER=""
 if python -m pip --version >/dev/null 2>&1; then
@@ -85,10 +97,10 @@ else
 fi
 
 if [[ "$INSTALLER" == "pip" ]]; then
-  python -m pip install --quiet --upgrade pip
-  python -m pip install --quiet -r "${WALLAS_DIR}/requirements.txt"
+  python -m pip install --upgrade pip
+  python -m pip install --progress-bar on -r "$REQ_FILE"
 else
-  uv pip install --quiet -r "${WALLAS_DIR}/requirements.txt"
+  uv pip install -r "$REQ_FILE"
 fi
 
 # ------------------------------------------------ native library preflight

@@ -1,0 +1,54 @@
+# requirements-min.txt — instalación rápida (~2 minutos)
+# Excluye easyocr (que arrastra torch ~800MB + opencv ~80MB) para que la
+# instalación inicial termine en minutos en lugar de tardar 15-20 min.
+#
+# Para usar este archivo en lugar del full: export WALLAS_MIN_INSTALL=1
+#
+# Los endpoints /v1/chat/completions, /v1/models, search_engine, gateway,
+# memory, todo el routing OpenAI/Anthropic y Ollama funciona con solo esto.
+# Lo único que NO funciona sin las deps extras: /v1/ocr/* (procesamiento
+# OCR de PDFs/imágenes escaneadas). Si necesitas OCR, corre después:
+#   uv pip install easyocr torch torchvision
+
+# Core server
+fastapi>=0.115.0
+uvicorn>=0.30.0
+pydantic>=2.0.0
+
+# AI Provider SDKs
+openai>=1.50.0
+google-genai>=1.0.0
+ollama>=0.4.0
+
+# Environment & Config
+python-dotenv>=1.0.0
+
+# File Processing (PDF only — sin OCR)
+PyPDF2>=3.0.0
+
+# Mistral SDK
+mistralai>=1.0.0
+
+# Timezone Support
+pytz>=2024.1
+
+# Web Search
+duckduckgo-search>=6.0.0
+
+# Async HTTP (for model fetching + MCP)
+aiohttp>=3.9.0
+httpx>=0.27.0
+
+# MCP Server (Model Context Protocol) for Gravedad / Claude Desktop
+mcp>=1.0.0
+
+# Google integration (Drive, Calendar, Gmail) — used by google_service.py
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.0.0
+
+# HTTP requests — search_engine fallback backends
+requests>=2.31.0
+
+# CLI tooling — list_models.py pretty-prints model registry
+rich>=13.0.0
