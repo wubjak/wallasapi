@@ -34,6 +34,7 @@ from .config import (
 from .memory import MemoryManager
 from .file_utils import FileProcessor
 from .logger import log
+from .model_catalog import RouterResult, VIRTUAL_ALIASES, VIRTUAL_PROFILES, detect_auto_profile, normalize_model, rank_candidates
 
 # Media storage
 TEMPLATE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -301,6 +302,12 @@ class AIRouter:
         preferred_model: str = None,
         prioritize_reasoning: bool = False,
         prompt_len: int = 0,
+        user_prompt: str = "",
+        images: bool = False,
+        files: bool = False,
+        audio: bool = False,
+        tools: bool = False,
+        cost_mode: str = "free_only",
     ) -> List[Dict]:
         """
         Returns MODELS_REGISTRY sorted with preferred model/provider first.
@@ -317,12 +324,69 @@ class AIRouter:
             if (TEXT in m.get("capabilities", []) or is_category_request) and not (set(m.get("capabilities", [])) & NON_CHAT_TYPES - ({preferred_model} if is_category_request else set()))
         ]
 
+        # Cost policy is enforced before *every* ordering path, including a
+        # concrete model id.  An unknown/trial/paid route cannot become a
+        # surprise bill merely because the caller bypassed a virtual profile.
+        if cost_mode != "allow_paid" or os.getenv("WALLAS_ALLOW_PAID", "false").lower() != "true":
+            chat_models = [
+                model for model in chat_models
+                if normalize_model(model.get("provider", ""), model.get("id", ""), model.get("source_metadata")).cost_class
+                in {"local", "free_endpoint", "free_tier"}
+            ]
+        self._last_routing_plan = {
+            "requested_profile": preferred_model or "standard", "profile": "exact_model" if preferred_model else "standard",
+            "signals": ["explicit_model"] if preferred_model else ["default"], "confidence": 1.0,
+            "candidates": [], "rejected": [],
+        }
+
+        # V2 virtual profiles are strict capability filters, never provider-wide
+        # guesses.  Keep a compact plan for the explain endpoint and for logs.
+        raw_requested = (preferred_model or "").lower()
+        requested = VIRTUAL_ALIASES.get(raw_requested, raw_requested)
+        if requested in VIRTUAL_PROFILES or requested == AUTO:
+            router_mode = os.getenv("WALLAS_ROUTER_MODE", "v2").lower()
+            if router_mode not in {"legacy", "shadow", "v2"}:
+                router_mode = "v2"
+            legacy_supported = raw_requested in {RAPIDO, STANDARD, RAZONAMIENTO, AGENTICO, VISTA, AUTO}
+
+            # Legacy can only handle the historical virtual ids. New profiles
+            # always use V2, even while an operator is rolling old tiers back.
+            if router_mode != "legacy" or not legacy_supported:
+                profile, signals, confidence = (requested, [], 1.0)
+                if requested == AUTO:
+                    profile, signals, confidence = detect_auto_profile(
+                        user_prompt, images=images, audio=audio, files=files,
+                        tools=tools, reasoning=prioritize_reasoning,
+                        required_context=max(0, int(prompt_len / 3) + 4096),
+                    )
+                required_modalities = {TEXT}
+                if images: required_modalities.add("image")
+                if audio: required_modalities.add("audio")
+                if files: required_modalities.add("file")
+                candidates, rejected = rank_candidates(
+                    chat_models, profile=profile,
+                    required_context=max(0, int(prompt_len / 3) + 4096),
+                    required_modalities=required_modalities, tools_requested=tools,
+                    cost_mode=cost_mode,
+                    allow_paid=os.getenv("WALLAS_ALLOW_PAID", "false").lower() == "true" and cost_mode == "allow_paid",
+                    preferred_provider=preferred_provider,
+                )
+                self._last_routing_plan = {
+                    "requested_profile": requested, "profile": profile,
+                    "signals": signals, "confidence": confidence, "router_mode": router_mode,
+                    "candidates": [{"provider": m.get("provider"), "id": m.get("id")} for m in candidates],
+                    "rejected": rejected,
+                }
+                if router_mode == "v2" or not legacy_supported:
+                    return candidates
+                # Shadow records V2 and falls through to legacy ordering.
+                self._last_routing_plan["shadow_candidates"] = list(self._last_routing_plan["candidates"])
+
         # Context-Aware Filtering: If prompt is large, deprioritize models with known small contexts
         is_large = prompt_len > 15000 # ~4k-5k tokens
         if is_large:
             log.info(f"[ROUTER] Detectado prompt grande ({prompt_len} caracteres). Aplicando penalización de contexto.")
         
-        import random
         # Logic-rich Sorting for Auto-routing
         def sort_key(m):
             caps = m.get("capabilities", [])
@@ -426,8 +490,8 @@ class AIRouter:
                 log.warning(f"[ROUTER] sort_key error for {m.get('id', '?')}: {e}")
                 priority = 99
             
-            # Use random jitter to rotate between models of same priority
-            return (priority, random.random())
+            # Stable tie-breaker: same input and health state yields same order.
+            return (priority, f"{provider}::{m.get('id', '')}")
 
         if not preferred_model and not preferred_provider:
             chat_models.sort(key=sort_key)
@@ -442,6 +506,15 @@ class AIRouter:
         # every tier including the legacy ones.
         if preferred_model in [RAPIDO, STANDARD, RAZONAMIENTO, AGENTICO, VISTA, AUTO]:
             chat_models.sort(key=sort_key)
+            legacy_candidates = [{"provider": m.get("provider"), "id": m.get("id")} for m in chat_models]
+            if self._last_routing_plan.get("router_mode") == "shadow":
+                self._last_routing_plan["legacy_candidates"] = legacy_candidates
+            else:
+                self._last_routing_plan = {
+                    "requested_profile": preferred_model, "profile": preferred_model,
+                    "signals": ["legacy_router"], "confidence": 1.0,
+                    "router_mode": "legacy", "candidates": legacy_candidates, "rejected": [],
+                }
             return chat_models
 
         if preferred_model:
@@ -481,6 +554,14 @@ class AIRouter:
             
             # --- Tier 1 & 2: Exact ID + Provider Redundancy ---
             exact_matches = [m for m in chat_models if m["id"].lower() == pref_low]
+            known_but_ineligible = any(m.get("id", "").lower() == pref_low for m in MODELS_REGISTRY) and not exact_matches
+            if known_but_ineligible:
+                self._last_routing_plan = {
+                    "requested_profile": preferred_model, "profile": "exact_model",
+                    "signals": ["exact_model"], "confidence": 1.0, "candidates": [],
+                    "rejected": [{"id": actual_pref, "reason": "cost_or_lifecycle_ineligible"}],
+                }
+                return []
             
             # Filter exact matches for context risk
             safe_exact = []
@@ -785,6 +866,11 @@ class AIRouter:
         tools: List[Dict[str, Any]] = None,
         tool_choice: Union[str, Dict[str, Any]] = None,
         history: List[Dict[str, Any]] = None,
+        cost_mode: str = "free_only",
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        response_format: Optional[Dict[str, Any]] = None,
+        parallel_tool_calls: Optional[bool] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Generator yielding chunks: {type, chunk, provider?, model?}
@@ -811,7 +897,9 @@ class AIRouter:
         if history:
             total_prompt_len += sum(len(m.get("content", "")) for m in history)
 
-        model_list = self._get_ordered_model_list(preferred_provider, preferred_model, reasoning, prompt_len=total_prompt_len)
+        model_list = self._get_ordered_model_list(preferred_provider, preferred_model, reasoning, prompt_len=total_prompt_len,
+                                                   user_prompt=user_prompt, images=has_images, files=has_files,
+                                                   audio=has_audio, tools=bool(tools or tool_choice), cost_mode=cost_mode)
         log.info(f"[ROUTER] Solicitud (stream): {len(model_list)} modelos candidatos.")
 
         # Circuit breaker: skip recently failed models with exponential backoff
@@ -865,7 +953,10 @@ class AIRouter:
                     stream = self._call_openai_style(
                         provider_name, model_id, p_cfg["base_url"], api_key,
                         enriched_prompt, user_prompt, images, history,
-                        stream=True, tools=tools, tool_choice=tool_choice
+                        stream=True, tools=tools, tool_choice=tool_choice,
+                        temperature=temperature, max_tokens=max_tokens,
+                        response_format=response_format, parallel_tool_calls=parallel_tool_calls,
+                        capabilities=capabilities,
                     )
                     for chunk in stream:
                         if not chunk.choices:
@@ -1006,6 +1097,11 @@ class AIRouter:
         tools: List[Dict[str, Any]] = None,
         tool_choice: Union[str, Dict[str, Any]] = None,
         history: List[Dict[str, Any]] = None,
+        cost_mode: str = "free_only",
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        response_format: Optional[Dict[str, Any]] = None,
+        parallel_tool_calls: Optional[bool] = None,
     ) -> Union[str, Tuple[str, str, str]]:
         # Auto-detect audio files
         files, audio = self._separate_audio_from_files(files, audio)
@@ -1027,7 +1123,9 @@ class AIRouter:
         if history:
             total_prompt_len += sum(len(m.get("content", "")) for m in history)
 
-        model_list = self._get_ordered_model_list(preferred_provider, preferred_model, reasoning, prompt_len=total_prompt_len)
+        model_list = self._get_ordered_model_list(preferred_provider, preferred_model, reasoning, prompt_len=total_prompt_len,
+                                                   user_prompt=user_prompt, images=has_images, files=has_files,
+                                                   audio=has_audio, tools=bool(tools or tool_choice), cost_mode=cost_mode)
         log.info(f"[ROUTER] Solicitud (sync): {len(model_list)} modelos candidatos.")
 
         # Circuit breaker: skip recently failed models with exponential backoff
@@ -1079,7 +1177,10 @@ class AIRouter:
                     res = self._call_openai_style(
                         provider_name, model_id, p_cfg["base_url"], api_key,
                         enriched_prompt, user_prompt, images, history, 
-                        stream=False, tools=tools, tool_choice=tool_choice
+                        stream=False, tools=tools, tool_choice=tool_choice,
+                        temperature=temperature, max_tokens=max_tokens,
+                        response_format=response_format, parallel_tool_calls=parallel_tool_calls,
+                        capabilities=capabilities,
                     )
                 elif provider_name == "gemini":
                     if not HAS_GEMINI:
@@ -1094,7 +1195,14 @@ class AIRouter:
                         images, history
                     )
 
-                if res:
+                tool_calls = None
+                if isinstance(res, RouterResult):
+                    tool_calls = res.tool_calls
+                    res = res.content
+                elif isinstance(res, dict):
+                    tool_calls = res.get("tool_calls")
+                    res = res.get("content") or ""
+                if res or tool_calls:
                     log.info(f"[SUCCESS] {provider_name}/{model_id} completó la solicitud.")
                     if memory:
                         mem_user_prompt = user_prompt
@@ -1105,7 +1213,10 @@ class AIRouter:
                         memory.save_message("user", mem_user_prompt)
                         memory.save_message("assistant", res)
                     self._mark_success(circuit_key, (time.time() - start_time) * 1000, thread_id)
-                    return (res, provider_name, model_id) if return_metadata else res
+                    if return_metadata:
+                        result = RouterResult(content=res, tool_calls=tool_calls, finish_reason="tool_calls", provider=provider_name, model=model_id) if tool_calls else res
+                        return result, provider_name, model_id
+                    return res
 
             except Exception as e:
                 err_msg = str(e).lower()
@@ -1297,7 +1408,9 @@ class AIRouter:
 
     def _call_openai_style(self, provider, model, base_url, api_key,
                            system_prompt, user_prompt, images, history, 
-                           stream=False, tools=None, tool_choice=None):
+                           stream=False, tools=None, tool_choice=None,
+                           temperature=None, max_tokens=None, response_format=None,
+                           parallel_tool_calls=None, capabilities=None):
         client = OpenAI(base_url=base_url, api_key=api_key, timeout=self.REQUEST_TIMEOUT_SECONDS)
         # For strict providers (like NVIDIA), if no images are present, send content as string
         if not images:
@@ -1329,23 +1442,37 @@ class AIRouter:
         # with "incomplete tool arguments" and that poisons history with
         # `function.name = ""`. 16384 is comfortably under Ministral 14B's
         # 128k context window and stops the truncation in practice.
-        max_tokens = 16384 if tools else 4096
+        effective_max_tokens = max_tokens or (16384 if tools else 4096)
         create_kwargs = {
             "model": model,
             "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": 0.7,
+            "max_tokens": effective_max_tokens,
+            "temperature": 0.7 if temperature is None else temperature,
             "stream": stream,
         }
         if tools:
             create_kwargs["tools"] = tools
             if tool_choice:
                 create_kwargs["tool_choice"] = tool_choice
+            if parallel_tool_calls is not None and "parallel_tools" in (capabilities or []):
+                create_kwargs["parallel_tool_calls"] = parallel_tool_calls
+        if response_format and "structured_output" in (capabilities or []):
+            create_kwargs["response_format"] = response_format
 
         response = client.chat.completions.create(**create_kwargs)
         if stream:
             return response
-        return response.choices[0].message.content
+        message = response.choices[0].message
+        if tools and getattr(message, "tool_calls", None):
+            calls = []
+            for call in message.tool_calls:
+                try:
+                    calls.append(call.model_dump(exclude_none=True))
+                except AttributeError:
+                    calls.append(dict(call))
+            usage = response.usage.model_dump(exclude_none=True) if getattr(response, "usage", None) else None
+            return RouterResult(content=message.content or "", tool_calls=calls, finish_reason="tool_calls", usage=usage, provider=provider, model=model)
+        return message.content
 
     def _call_gemini(self, model_id, api_key, system_prompt, user_prompt,
                      images_b64, files_data, audio_data, history, stream=False):

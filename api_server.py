@@ -36,11 +36,12 @@ from wallasAPI.router import AIRouter
 from wallasAPI.config import MODELS_REGISTRY, PROVIDERS, PROVIDER_METADATA, PROXY_API_KEY_ENV
 from wallasAPI.model_fetcher import (
     update_registry_async, load_registry_from_cache,
-    verify_models_alive, cache_needs_verify,
+    verify_models_alive, cache_needs_verify, get_last_refresh_report,
 )
 from wallasAPI.search_engine import get_search_engine
 from wallasAPI.browser_engine import get_browser_client
 from wallasAPI.logger import log
+from wallasAPI.model_catalog import RouterResult, VIRTUAL_PROFILES, VIRTUAL_ALIASES, enrich_legacy_entry
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -147,9 +148,20 @@ class OpenAI_ChatRequest(BaseModel):
     tools: Optional[List[Dict[str, Any]]] = None
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None
     response_format: Optional[Dict[str, Any]] = None
+    parallel_tool_calls: Optional[bool] = None
+    reasoning_effort: Optional[str] = None
     # OpenClaw/Claude Code envían esto a veces
     thinking: Optional[Union[str, Dict[str, Any]]] = None
     web_search: Optional[bool] = False
+
+
+class RoutingExplainRequest(BaseModel):
+    model: str = "auto"
+    messages: List[OpenAI_Message] = Field(default_factory=list)
+    tools: Optional[List[Dict[str, Any]]] = None
+    modalities: Optional[List[str]] = None
+    max_tokens: Optional[int] = 4096
+    cost_mode: str = "free_only"
 
 
 class Anthropic_Message(BaseModel):
@@ -170,6 +182,11 @@ class Anthropic_Request(BaseModel):
 class EmbeddingRequest(BaseModel):
     input: Union[str, List[str]]
     model: str = "text-embedding-3-small"
+
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: Optional[str] = "es-MX-DaliaNeural"
 
 
 class CompletionRequest(BaseModel):
@@ -477,6 +494,28 @@ VIRTUAL_MODELS = [
     },
 ]
 
+# Single capability definition shared with the router.  The legacy `vista`
+# id remains an alias for clients that already use it; new clients see
+# `vision`, `codigo`, `multimodal` and `contexto-largo` as first-class ids.
+def _build_virtual_models() -> List[Dict[str, Any]]:
+    virtuals = [{
+        "id": "auto", "name": "Wallas AUTO",
+        "capabilities": {"chat": True, "tools": True},
+        "metadata": {"context_window": 0, "pricing_tier": "free", "description": "Detecta el perfil y delega sin seleccionar modelos pagados."},
+    }]
+    for profile, (required, _weights) in VIRTUAL_PROFILES.items():
+        virtuals.append({
+            "id": profile, "name": f"Wallas {profile.upper()}",
+            "capabilities": {"chat": True, **{cap: True for cap in required}},
+            "metadata": {"context_window": 0, "pricing_tier": "free", "required_capabilities": sorted(required),
+                         "description": f"Perfil virtual {profile}; candidatos verificados dinámicamente."},
+        })
+    vision = next(v for v in virtuals if v["id"] == "vision")
+    virtuals.append({**vision, "id": "vista", "name": "Wallas VISTA", "metadata": {**vision["metadata"], "alias_for": "vision"}})
+    return virtuals
+
+VIRTUAL_MODELS = _build_virtual_models()
+
 
 # =============================================================================
 # Ollama-Compatible Facade (/api/*)
@@ -566,7 +605,7 @@ async def list_models(
     capability: Optional[str] = Query(None),
     provider: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
-    sort: str = Query("context", regex="^(context|name|provider|latency|none)$"),
+    sort: str = Query("context", pattern="^(context|name|provider|latency|none)$"),
     include_dead: bool = Query(False),
 ):
     """
@@ -599,7 +638,8 @@ async def list_models(
             continue
         models_data.append(entry)
 
-    for model in MODELS_REGISTRY:
+    for raw_model in MODELS_REGISTRY:
+        model = enrich_legacy_entry(raw_model)
         meta = model.get("metadata", {})
         caps = set(model.get("capabilities", []))
         prov = model.get("provider", "")
@@ -680,13 +720,58 @@ async def verify_models(
     return result
 
 
+@app.get("/v1/routing/profiles")
+async def routing_profiles():
+    """Describe virtual profiles and why each currently has (or lacks) candidates."""
+    result = []
+    for profile, (required, _weights) in VIRTUAL_PROFILES.items():
+        candidates = router._get_ordered_model_list(preferred_model=profile)
+        plan = getattr(router, "_last_routing_plan", {})
+        result.append({"id": profile, "required_capabilities": sorted(required),
+                       "available_candidates": plan.get("candidates", []),
+                       "unavailable_reasons": plan.get("rejected", [])[:25]})
+    return {"object": "list", "data": result, "aliases": VIRTUAL_ALIASES}
+
+
+@app.post("/v1/routing/explain", dependencies=[Depends(verify_auth)])
+async def explain_routing(request: RoutingExplainRequest):
+    """Return the deterministic routing plan without making an inference call."""
+    text = "\n".join(
+        part if isinstance(part := message.content, str) else json.dumps(part, ensure_ascii=False)
+        for message in request.messages
+    )
+    modes = set(request.modalities or [])
+    router._get_ordered_model_list(
+        preferred_model=request.model, user_prompt=text, prompt_len=len(text),
+        images="image" in modes, audio="audio" in modes, files=bool(modes & {"file", "document", "video"}),
+        tools=bool(request.tools), cost_mode=request.cost_mode,
+    )
+    return getattr(router, "_last_routing_plan", {"profile": "standard", "signals": ["exact_model"], "candidates": [], "rejected": []})
+
+
+@app.post("/v1/registry/refresh", dependencies=[Depends(verify_auth)])
+async def refresh_registry(provider: Optional[str] = Query(None)):
+    """Refresh provider inventories. Credentials are intentionally never returned."""
+    if provider and provider.lower() not in PROVIDERS:
+        raise HTTPException(status_code=400, detail="Unknown provider")
+    provider = provider.lower() if provider else None
+    models = await update_registry_async(provider_filter=provider)
+    if provider:
+        models = [m for m in models if m.get("provider", "").lower() == provider.lower()]
+    report = get_last_refresh_report()
+    if provider:
+        report["providers"] = {provider: report.get("providers", {}).get(provider, {"status": "unknown", "count": len(models)})}
+    return {"total": len(models), **report}
+
+
 @app.get("/v1/models/{model_id}")
 async def get_model_detail(model_id: str):
     virtual = {v["id"]: v for v in VIRTUAL_MODELS}
     if model_id.lower() in virtual:
         v = virtual[model_id.lower()]
         return {"object": "model", "id": model_id, **v["metadata"]}
-    for m in MODELS_REGISTRY:
+    for raw_model in MODELS_REGISTRY:
+        m = enrich_legacy_entry(raw_model)
         if m.get("id") == model_id:
             return {
                 "object": "model",
@@ -706,6 +791,8 @@ async def get_model_detail(model_id: str):
 async def chat_completions(
     request: OpenAI_ChatRequest,
     x_willaku_tier: Optional[str] = Header(None, alias="X-Willaku-Tier"),
+    x_wallas_provider: Optional[str] = Header(None, alias="X-Wallas-Provider"),
+    x_wallas_cost_mode: Optional[str] = Header(None, alias="X-Wallas-Cost-Mode"),
 ):
     """
     Endpoint principal para OpenClaw.
@@ -719,6 +806,14 @@ async def chat_completions(
     """
     preferred_model = (x_willaku_tier or "").strip() or request.model
     reasoning_mode = preferred_model == "razonamiento"
+    preferred_provider = (x_wallas_provider or "").strip().lower() or None
+    if preferred_provider and preferred_provider not in PROVIDERS:
+        raise HTTPException(status_code=400, detail="Unknown X-Wallas-Provider")
+    cost_mode = (x_wallas_cost_mode or "free_only").strip().lower()
+    if cost_mode not in {"free_only", "allow_paid"}:
+        raise HTTPException(status_code=400, detail="X-Wallas-Cost-Mode must be free_only or allow_paid")
+    if cost_mode == "allow_paid" and os.getenv("WALLAS_ALLOW_PAID", "false").lower() != "true":
+        raise HTTPException(status_code=403, detail="paid_mode_not_enabled")
 
     system_prompt, cleaned_messages = _normalize_messages_for_openclaw(request.messages)
 
@@ -745,17 +840,39 @@ async def chat_completions(
 
     sanitized_tools = _sanitize_tools(request.tools)
 
+    # Calculate before StreamingResponse so headers describe the same stable plan.
+    planned_models = router._get_ordered_model_list(
+        preferred_provider=preferred_provider, preferred_model=preferred_model,
+        prioritize_reasoning=reasoning_mode, prompt_len=len(system_prompt) + len(user_prompt),
+        user_prompt=user_prompt, tools=bool(sanitized_tools or request.tool_choice), cost_mode=cost_mode,
+    )
+    plan = getattr(router, "_last_routing_plan", {})
+    planned = planned_models[0] if planned_models else {}
+    routing_headers = {
+        "X-Wallas-Profile": str(plan.get("profile", preferred_model)),
+        "X-Wallas-Provider": str(planned.get("provider", preferred_provider or "none")),
+        "X-Wallas-Model": str(planned.get("id", "none")),
+        "X-Wallas-Route-Id": str((planned.get("catalog") or {}).get("route_id", "none")),
+        "X-Wallas-Registry-Age": "runtime",
+        "X-Wallas-Routing-Reason": ",".join(plan.get("signals", ["explicit_model"]))[:512],
+    }
+    if not planned_models:
+        raise HTTPException(status_code=503, detail={"code": "no_eligible_model", "routing": plan})
+
     if request.stream:
         return StreamingResponse(
             _openai_stream_generator(
                 system_prompt, user_prompt, preferred_model, thread_id,
-                sanitized_tools, request.tool_choice, reasoning_mode, history
+                sanitized_tools, request.tool_choice, reasoning_mode, history,
+                preferred_provider, cost_mode, request.temperature, request.max_tokens,
+                request.response_format, request.parallel_tool_calls,
             ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",
+                **routing_headers,
             },
         )
     else:
@@ -763,13 +880,24 @@ async def chat_completions(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             preferred_model=preferred_model,
+            preferred_provider=preferred_provider,
             tools=sanitized_tools,
             tool_choice=request.tool_choice,
             return_metadata=True,
             reasoning=reasoning_mode,
             history=history,
+            cost_mode=cost_mode,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            response_format=request.response_format,
+            parallel_tool_calls=request.parallel_tool_calls,
         )
-        return _build_openai_response(res, model_used, provider)
+        if isinstance(res, RouterResult):
+            tool_calls, content = res.tool_calls, res.content
+        else:
+            tool_calls = res.get("tool_calls") if isinstance(res, dict) else None
+            content = res.get("content", "") if isinstance(res, dict) else res
+        return JSONResponse(_build_openai_response(content, model_used, provider, tool_calls=tool_calls), headers=routing_headers)
 
 
 # =============================================================================
@@ -796,6 +924,24 @@ async def embeddings(request: EmbeddingRequest):
 
 
 # =============================================================================
+# Text-to-Speech (TTS): /v1/tts & /v1/audio/speech
+# =============================================================================
+
+@app.post("/v1/tts")
+@app.post("/v1/audio/speech")
+async def tts(request: TTSRequest):
+    try:
+        from fastapi.responses import FileResponse
+        path = await AIRouter.text_to_speech(request.text, voice=request.voice)
+        if path and os.path.exists(path):
+            return FileResponse(path, media_type="audio/mpeg")
+        raise HTTPException(status_code=500, detail="Error al generar audio de TTS")
+    except Exception as e:
+        log.error(f"[TTS] Endpoint error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
 # OpenAI-Compatible: /v1/completions (legacy)
 # =============================================================================
 
@@ -813,14 +959,15 @@ async def completions(request: CompletionRequest):
         return await chat_completions(chat_req)
     else:
         res = await chat_completions(chat_req)
-        text = res["choices"][0]["message"]["content"]
+        body = json.loads(res.body) if isinstance(res, JSONResponse) else res
+        text = body["choices"][0]["message"]["content"]
         return {
-            "id": res["id"],
+            "id": body["id"],
             "object": "text_completion",
-            "created": res["created"],
-            "model": res["model"],
+            "created": body["created"],
+            "model": body["model"],
             "choices": [{"text": text, "index": 0, "logprobs": None, "finish_reason": "stop"}],
-            "usage": res["usage"],
+            "usage": body["usage"],
         }
 
 
@@ -850,11 +997,12 @@ async def anthropic_messages(request: Anthropic_Request):
             return_metadata=True,
             reasoning=reasoning_mode,
         )
+        text = res.content if isinstance(res, RouterResult) else (res.get("content", "") if isinstance(res, dict) else res)
         return {
             "id": f"msg_{uuid.uuid4()}",
             "type": "message",
             "role": "assistant",
-            "content": [{"type": "text", "text": res}],
+            "content": [{"type": "text", "text": text}],
             "model": model_used,
             "stop_reason": "end_turn",
             "usage": {"input_tokens": 0, "output_tokens": 0},
@@ -866,7 +1014,9 @@ async def anthropic_messages(request: Anthropic_Request):
 # =============================================================================
 
 async def _openai_stream_generator(system_prompt, user_prompt, preferred_model, thread_id,
-                                     tools=None, tool_choice=None, reasoning=False, history=None):
+                                     tools=None, tool_choice=None, reasoning=False, history=None,
+                                     preferred_provider=None, cost_mode="free_only", temperature=None,
+                                     max_tokens=None, response_format=None, parallel_tool_calls=None):
     chat_id = f"chatcmpl-{uuid.uuid4()}"
     created_time = int(time.time())
 
@@ -885,11 +1035,17 @@ async def _openai_stream_generator(system_prompt, user_prompt, preferred_model, 
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 preferred_model=preferred_model,
+                preferred_provider=preferred_provider,
                 thread_id=thread_id,
                 tools=tools,
                 tool_choice=tool_choice,
                 reasoning=reasoning,
                 history=history,
+                cost_mode=cost_mode,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+                parallel_tool_calls=parallel_tool_calls,
             ):
                 loop.call_soon_threadsafe(queue.put_nowait, chunk)
             loop.call_soon_threadsafe(queue.put_nowait, None)

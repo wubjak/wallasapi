@@ -9,6 +9,7 @@ import asyncio
 import aiohttp
 import json
 import time
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from .config import (
@@ -18,9 +19,44 @@ from .config import (
     build_model_metadata,
 )
 from .logger import log
+from .model_catalog import enrich_legacy_entry, registry_cache_path
 
-MODELS_CACHE_FILE = os.path.join(os.path.dirname(__file__), "models_cache.json")
-MODELS_CACHE_TTL_SECONDS = int(os.getenv("WALLAS_MODELS_CACHE_TTL_SECONDS", "3600"))
+# Runtime state must never dirty the repository.  The legacy in-repo cache is
+# imported once below when present, then future writes go to the user cache.
+MODELS_CACHE_FILE = str(registry_cache_path())
+LEGACY_MODELS_CACHE_FILE = os.path.join(os.path.dirname(__file__), "models_cache.json")
+MODELS_CACHE_TTL_SECONDS = int(os.getenv("WALLAS_MODEL_REFRESH_SECONDS", os.getenv("WALLAS_MODELS_CACHE_TTL_SECONDS", "21600")))
+SNAPSHOT_MAX_AGE_SECONDS = int(os.getenv("WALLAS_MODEL_SNAPSHOT_MAX_AGE_SECONDS", str(7 * 24 * 3600)))
+_LAST_REFRESH_REPORT: Dict[str, Any] = {"refreshed": False, "providers": {}, "added": [], "removed": [], "reclassified": []}
+
+
+def _snapshot_path(provider: str) -> Path:
+    return registry_cache_path().parent / "providers" / f"{provider}.json"
+
+
+def _save_provider_snapshot(provider: str, models: List[Dict[str, Any]]) -> None:
+    path = _snapshot_path(provider)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps({"saved_at": int(time.time()), "models": models}, ensure_ascii=False), encoding="utf-8")
+    os.replace(temp, path)
+
+
+def _load_provider_snapshot(provider: str) -> List[Dict[str, Any]]:
+    path = _snapshot_path(provider)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        saved_at = int(payload.get("saved_at", 0))
+        if not saved_at or time.time() - saved_at > SNAPSHOT_MAX_AGE_SECONDS:
+            return []
+        models = payload.get("models", [])
+        return [{**enrich_legacy_entry(model), "stale": True, "snapshot_age_seconds": int(time.time() - saved_at)} for model in models]
+    except (OSError, ValueError, json.JSONDecodeError):
+        return []
+
+
+def get_last_refresh_report() -> Dict[str, Any]:
+    return dict(_LAST_REFRESH_REPORT)
 
 # ============================================================================
 # Heuristic Capability Classifier
@@ -87,9 +123,6 @@ def _determine_capabilities(model_id: str, provider: str) -> List[str]:
     if any(pat in mid for pat in _EXCLUDE_PATTERNS):
         return ["excluded"]
         
-    if provider == "cerebras" and "gpt-oss" in mid:
-        return ["excluded"]
-
     # --- Embedding (not for chat) ---
     if any(pat in mid for pat in _EMBEDDING_PATTERNS):
         caps = [EMBEDDING]
@@ -314,6 +347,7 @@ async def fetch_provider_models(
                             "capabilities": caps,
                             "meta": _extract_metadata(m_id),
                             "metadata": build_model_metadata(m_id, provider_name, caps),
+                            "source_metadata": m,
                             "desc": f"{provider_name.capitalize()}: {m.get('name', m_id)}"
                         })
                     log.info(f"[OK] {provider_name}: {len(models)} modelos")
@@ -485,23 +519,33 @@ async def fetch_provider_models(
     return models
 
 
-async def _fetch_all_models() -> List[Dict[str, Any]]:
-    """Fetches models from all providers concurrently."""
+async def _fetch_all_models(provider_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fetch all providers without letting one outage erase its last catalog."""
     async with aiohttp.ClientSession() as session:
-        tasks = [
-            fetch_provider_models(session, name, cfg)
-            for name, cfg in PROVIDERS.items()
-        ]
+        providers = [(name, cfg) for name, cfg in PROVIDERS.items() if not provider_filter or name == provider_filter]
+        tasks = [fetch_provider_models(session, name, cfg) for name, cfg in providers]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         all_models = []
-        for res in results:
-            if isinstance(res, list):
+        provider_report = {}
+        for (provider, _config), res in zip(providers, results):
+            if isinstance(res, list) and res:
                 all_models.extend(res)
+                _save_provider_snapshot(provider, res)
+                provider_report[provider] = {"status": "fresh", "count": len(res)}
             elif isinstance(res, Exception):
                 log.error(f"Error en fetch: {res}")
+                snapshot = _load_provider_snapshot(provider)
+                all_models.extend(snapshot)
+                provider_report[provider] = {"status": "stale" if snapshot else "failed", "count": len(snapshot)}
+            else:
+                snapshot = _load_provider_snapshot(provider)
+                all_models.extend(snapshot)
+                provider_report[provider] = {"status": "stale" if snapshot else "unavailable", "count": len(snapshot)}
 
-        return all_models
+        _LAST_REFRESH_REPORT["providers"] = provider_report
+
+        return [enrich_legacy_entry(model) for model in all_models]
 
 
 def _sort_models_by_priority(models: List[Dict]) -> List[Dict]:
@@ -532,15 +576,27 @@ def _sort_models_by_priority(models: List[Dict]) -> List[Dict]:
 # Public API
 # ============================================================================
 
-async def update_registry_async() -> list:
+async def update_registry_async(provider_filter: Optional[str] = None) -> list:
     """Async version for FastAPI lifespan."""
     from . import config
     try:
-        new_models = await _fetch_all_models()
+        before = {(m.get("provider"), m.get("id")): m for m in config.MODELS_REGISTRY}
+        new_models = await _fetch_all_models(provider_filter=provider_filter)
         if new_models:
-            sorted_models = _sort_models_by_priority(new_models)
+            retained = [] if not provider_filter else [m for m in config.MODELS_REGISTRY if m.get("provider") != provider_filter]
+            sorted_models = _sort_models_by_priority(retained + new_models)
+            after = {(m.get("provider"), m.get("id")): m for m in sorted_models}
             config.MODELS_REGISTRY.clear()
             config.MODELS_REGISTRY.extend(sorted_models)
+            _LAST_REFRESH_REPORT.update({
+                "refreshed": True,
+                "added": sorted(f"{p}:{mid}" for p, mid in after.keys() - before.keys()),
+                "removed": sorted(f"{p}:{mid}" for p, mid in before.keys() - after.keys()),
+                "reclassified": sorted(
+                    f"{p}:{mid}" for (p, mid) in after.keys() & before.keys()
+                    if after[(p, mid)].get("capabilities") != before[(p, mid)].get("capabilities")
+                ),
+            })
             # Count stats
             chat_count = sum(1 for m in sorted_models if TEXT in m.get("capabilities", []))
             free_count = sum(1 for m in sorted_models if FREE in m.get("capabilities", []))
@@ -548,6 +604,7 @@ async def update_registry_async() -> list:
             save_registry_to_cache()
         else:
             log.warning("No se encontraron modelos.")
+            _LAST_REFRESH_REPORT["refreshed"] = False
         return config.MODELS_REGISTRY
     except Exception as e:
         log.error(f"Error en update_registry_async: {e}")
@@ -557,18 +614,22 @@ async def update_registry_async() -> list:
 def load_registry_from_cache() -> bool:
     """Loads models from local JSON cache if it exists."""
     from . import config
-    if not os.path.exists(MODELS_CACHE_FILE):
+    cache_file = MODELS_CACHE_FILE if os.path.exists(MODELS_CACHE_FILE) else LEGACY_MODELS_CACHE_FILE
+    if not os.path.exists(cache_file):
         return False
     try:
-        cache_age = max(0, int(time.time() - os.path.getmtime(MODELS_CACHE_FILE)))
+        cache_age = max(0, int(time.time() - os.path.getmtime(cache_file)))
         if MODELS_CACHE_TTL_SECONDS > 0 and cache_age > MODELS_CACHE_TTL_SECONDS:
-            log.info(f"[CACHE] Caché de modelos expirada ({cache_age}s > {MODELS_CACHE_TTL_SECONDS}s). Refrescando.")
-            return False
-        with open(MODELS_CACHE_FILE, "r", encoding="utf-8") as f:
+            if cache_age > SNAPSHOT_MAX_AGE_SECONDS:
+                log.info(f"[CACHE] Caché demasiado antigua ({cache_age}s); se omitirá.")
+                return False
+            log.info(f"[CACHE] Caché vencida ({cache_age}s); se conserva como stale hasta refrescar.")
+        with open(cache_file, "r", encoding="utf-8") as f:
             cached_models = json.load(f)
             if cached_models and isinstance(cached_models, list):
                 config.MODELS_REGISTRY.clear()
-                config.MODELS_REGISTRY.extend(cached_models)
+                stale = cache_age > MODELS_CACHE_TTL_SECONDS
+                config.MODELS_REGISTRY.extend({**enrich_legacy_entry(model), "stale": stale, "snapshot_age_seconds": cache_age} for model in cached_models)
                 log.info(f"[CACHE] Cargados {len(cached_models)} modelos desde caché local.")
                 return True
     except Exception as e:
@@ -580,8 +641,11 @@ def save_registry_to_cache():
     """Saves current registry to local JSON file."""
     from . import config
     try:
-        with open(MODELS_CACHE_FILE, "w", encoding="utf-8") as f:
+        os.makedirs(os.path.dirname(MODELS_CACHE_FILE), exist_ok=True)
+        temp_file = f"{MODELS_CACHE_FILE}.tmp"
+        with open(temp_file, "w", encoding="utf-8") as f:
             json.dump(config.MODELS_REGISTRY, f, indent=2, ensure_ascii=False)
+        os.replace(temp_file, MODELS_CACHE_FILE)
         log.debug("Caché de modelos actualizada.")
     except Exception as e:
         log.warning(f"Error guardando caché de modelos: {e}")

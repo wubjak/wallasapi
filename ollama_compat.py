@@ -374,7 +374,7 @@ def _wallas_sync_response(ai_router, model: str, system_prompt: str,
                           opts: Dict[str, Any], shape: str) -> JSONResponse:
     reasoning = (model == "razonamiento")
     try:
-        text, provider, model_used = ai_router.get_completion(
+        res, provider, model_used = ai_router.get_completion(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             preferred_model=model,
@@ -382,6 +382,7 @@ def _wallas_sync_response(ai_router, model: str, system_prompt: str,
             reasoning=reasoning,
             history=history or None,
         )
+        text = res.content if type(res).__name__ == "RouterResult" else (res.get("content", "") if isinstance(res, dict) else res)
     except Exception as e:
         log.error(f"[OLLAMA] sync error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

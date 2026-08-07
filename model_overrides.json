@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "verified_at": "2026-07-12",
+  "models": [
+    {
+      "provider": "nvidia",
+      "id": "z-ai/glm-5.2",
+      "author": "z-ai",
+      "model_type": "chat",
+      "capabilities": ["text", "reasoning", "agentic", "tools", "structured_output", "code", "long_context", "streaming", "moe"],
+      "input_modalities": ["text"],
+      "output_modalities": ["text"],
+      "context_window": 1000000,
+      "max_output_tokens": 16384,
+      "cost_class": "free_endpoint",
+      "lifecycle": "active",
+      "quality_score": 98,
+      "source_url": "https://build.nvidia.com/z-ai/glm-5.2/modelcard",
+      "confidence": "verified"
+    },
+    {
+      "provider": "cerebras",
+      "id": "gpt-oss-120b",
+      "author": "openai",
+      "model_type": "chat",
+      "capabilities": ["text", "reasoning", "agentic", "tools", "structured_output", "streaming"],
+      "input_modalities": ["text"],
+      "output_modalities": ["text"],
+      "context_window": 131072,
+      "cost_class": "free_tier",
+      "lifecycle": "active",
+      "quality_score": 86,
+      "confidence": "verified"
+    },
+    {
+      "provider": "cohere",
+      "id": "command-a-plus-05-2026",
+      "author": "cohere",
+      "model_type": "chat",
+      "capabilities": ["text", "vision", "reasoning", "agentic", "tools", "structured_output", "streaming", "moe"],
+      "input_modalities": ["text", "image"],
+      "output_modalities": ["text"],
+      "context_window": 128000,
+      "cost_class": "trial",
+      "lifecycle": "active",
+      "quality_score": 90,
+      "confidence": "verified"
+    }
+  ],
+  "lifecycle_overrides": [
+    {"provider": "gemini", "pattern": "gemini-2.0-flash", "lifecycle": "retired"},
+    {"provider": "gemini", "pattern": "gemini-2.0-flash-lite", "lifecycle": "retired"},
+    {"provider": "groq", "pattern": "qwen/qwen3-32b", "lifecycle": "deprecated"}
+  ]
+}

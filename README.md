@@ -235,6 +235,36 @@ print(response.choices[0].message.content)
 
 ---
 
+## 2026 capability-aware routing
+
+WallasAPI classifies each concrete model independently; capabilities are not inherited from a provider. A model may belong to several virtual profiles at once.
+
+| Virtual model | Selection contract |
+|---|---|
+| `auto` | Detects modality, tools, context, code and reasoning signals, then delegates. |
+| `rapido` | Stable low-latency text and streaming. |
+| `standard` | Balanced quality, context, stability and speed. |
+| `razonamiento` | Requires verified reasoning support. |
+| `agentico` | Requires tool calling; preserves OpenAI tool calls in normal and SSE responses. |
+| `codigo` | Requires verified coding capability. |
+| `vision` | Requires native image understanding. `vista` remains a compatible alias. |
+| `multimodal` | Requires every modality present in the request. |
+| `contexto-largo` | Verifies input, requested output and safety margin against the context window. |
+
+Routing is free/local by default. Paid or trial models require both `WALLAS_ALLOW_PAID=true` on the server and `X-Wallas-Cost-Mode: allow_paid` on the individual request. Use `X-Wallas-Provider` to pin a provider explicitly.
+
+Every chat response exposes `X-Wallas-Profile`, `X-Wallas-Provider`, `X-Wallas-Model`, `X-Wallas-Route-Id`, `X-Wallas-Registry-Age` and `X-Wallas-Routing-Reason`, including streaming responses.
+
+Operational controls:
+
+- `WALLAS_ROUTER_MODE=legacy|shadow|v2` controls rollout. `shadow` records both candidate orders while returning the legacy order for historical profiles.
+- `WALLAS_MODEL_REFRESH_SECONDS` controls refresh frequency (six hours by default).
+- `WALLAS_MODEL_SNAPSHOT_MAX_AGE_SECONDS` controls stale snapshot retention (seven days by default).
+- `WALLAS_CACHE_DIR` overrides the platform cache directory.
+- `GET /v1/routing/profiles` lists current candidates and rejection reasons.
+- `POST /v1/routing/explain` explains a decision without inference.
+- `POST /v1/registry/refresh?provider=nvidia` refreshes one provider without replacing the others.
+
 ## API Endpoints
 
 OpenAI-compatible:
