@@ -12,10 +12,14 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import quote_plus, urlparse
 
 try:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS  # paquete nuevo (renombrado desde duckduckgo-search)
     HAS_DDGS = True
 except ImportError:
-    HAS_DDGS = False
+    try:
+        from duckduckgo_search import DDGS
+        HAS_DDGS = True
+    except ImportError:
+        HAS_DDGS = False
 
 try:
     import requests
@@ -67,10 +71,13 @@ class WebSearchEngine:
             log.warning(f"[SEARCH] DuckDuckGo text() falló para '{query}': {e}. Intentando fallback a html...")
 
         # 2. Fallback resiliente a _text_html() si text() dio vacío o falló
+        #    (solo existe en versiones antiguas del paquete)
         if not results:
             try:
-                log.info(f"[SEARCH] DuckDuckGo text() no devolvió resultados para '{query}'. Probando fallback _text_html()...")
                 with DDGS() as ddgs:
+                    if not hasattr(ddgs, "_text_html"):
+                        raise RuntimeError("_text_html no disponible en esta versión")
+                    log.info(f"[SEARCH] DuckDuckGo text() no devolvió resultados para '{query}'. Probando fallback _text_html()...")
                     for r in ddgs._text_html(query, max_results=max_results):
                         results.append({
                             "title": r.get("title", ""),

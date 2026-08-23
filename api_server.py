@@ -876,7 +876,7 @@ async def chat_completions(
             },
         )
     else:
-        res, provider, model_used = router.get_completion(
+        res, provider, model_used = await asyncio.to_thread(lambda: router.get_completion(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             preferred_model=preferred_model,
@@ -891,7 +891,7 @@ async def chat_completions(
             max_tokens=request.max_tokens,
             response_format=request.response_format,
             parallel_tool_calls=request.parallel_tool_calls,
-        )
+        ))
         if isinstance(res, RouterResult):
             tool_calls, content = res.tool_calls, res.content
         else:
@@ -909,7 +909,7 @@ async def embeddings(request: EmbeddingRequest):
     inputs = [request.input] if isinstance(request.input, str) else request.input
     try:
         if hasattr(router, "get_embeddings"):
-            data = router.get_embeddings(inputs, model=request.model)
+            data = await asyncio.to_thread(lambda: router.get_embeddings(inputs, model=request.model))
         else:
             data = [[0.0] * 1536 for _ in inputs]
         return {
@@ -990,13 +990,13 @@ async def anthropic_messages(request: Anthropic_Request):
             media_type="text/event-stream",
         )
     else:
-        res, provider, model_used = router.get_completion(
+        res, provider, model_used = await asyncio.to_thread(lambda: router.get_completion(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             preferred_model=preferred_model,
             return_metadata=True,
             reasoning=reasoning_mode,
-        )
+        ))
         text = res.content if isinstance(res, RouterResult) else (res.get("content", "") if isinstance(res, dict) else res)
         return {
             "id": f"msg_{uuid.uuid4()}",
@@ -1229,7 +1229,7 @@ async def web_search(request: WebSearchRequest):
     """Búsqueda web con fallback automático entre backends."""
     try:
         se = get_search_engine()
-        result = se.search(request.query, max_results=request.max_results, preferred_backend=request.backend)
+        result = await asyncio.to_thread(se.search, request.query, request.max_results, request.backend)
         return result
     except Exception as e:
         log.error(f"[SEARCH] Endpoint error: {e}")
@@ -1258,19 +1258,19 @@ async def chat_completions_fork(request: ForkChatRequest):
     if request.web_search:
         try:
             se = get_search_engine()
-            search_ctx = se.search_and_summarize(user_prompt, router, max_results=8)
+            search_ctx = await asyncio.to_thread(se.search_and_summarize, user_prompt, router, 8)
             system_prompt += f"\n\n[CONTEXTO DE BÚSQUEDA WEB ACTIVADO]\n{search_ctx}\n[FIN CONTEXTO WEB]"
         except Exception as e:
             log.warning(f"[WEB_SEARCH] Falló en fork: {e}")
 
     try:
-        result = router.fork_completion(
+        result = await asyncio.to_thread(lambda: router.fork_completion(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             preferred_model=request.model,
             max_parallel=request.max_parallel,
             return_all=request.return_all,
-        )
+        ))
 
         if request.return_all:
             return {
@@ -1322,12 +1322,12 @@ async def diligence_compare(request: DiligenceCompareRequest):
     Ejecuta múltiples modelos en paralelo y devuelve comparación detallada.
     """
     try:
-        result = router.fork_completion(
+        result = await asyncio.to_thread(lambda: router.fork_completion(
             system_prompt=request.system_prompt,
             user_prompt=request.task,
             max_parallel=request.max_parallel,
             return_all=True,
-        )
+        ))
 
         # Build comparison report
         ok_results = [r for r in result if r["ok"]]

@@ -23,7 +23,7 @@ mistralai>=1.0.0
 pytz>=2024.1
 
 # Web Search
-duckduckgo-search>=6.0.0
+ddgs>=9.0.0
 
 # Async HTTP (for model fetching + MCP)
 aiohttp>=3.9.0
